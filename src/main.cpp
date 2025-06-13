@@ -3,19 +3,48 @@
 #include <SDL2/SDL_image.h>
 #include <map>
 
-#define WINDOW_SIZE 600
+#define WINDOW_SIZE 1200
 #define SQUARE_SIZE (WINDOW_SIZE / 8)
 
-void drawPieces(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14],
-                Board &board) {
+class PromotionMenu {
+  public:
+    int x, y;
+    int width, height;
+    bool display;
+
+    PromotionMenu() {
+        x = SQUARE_SIZE * 2;
+        y = SQUARE_SIZE * 2;
+        width = SQUARE_SIZE * 4;
+        height = SQUARE_SIZE * 4;
+        display = false;
+    }
+
+    bool isClicked(int xVal, int yVal) {
+        bool xInRange = xVal >= x && xVal < x + width;
+        bool yInRange = yVal >= y && yVal < y + height;
+        return xInRange && yInRange;
+    }
+
+    void draw(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14], bool isWhiteTurn) {
+        SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
+        SDL_Rect rect = {x, y, width, height};
+        SDL_RenderFillRect(renderer, &rect);
+        int pieceColour = isWhiteTurn ? 0 : 8;
+        for (int i = 0; i < 4; i++) {
+            SDL_Rect rect = {x + (i / 2) * SQUARE_SIZE * 2, y + (i % 2) * SQUARE_SIZE * 2, width / 2, height / 2};
+            SDL_RenderCopy(renderer, pieceTextures[pieceColour + i + 1], NULL, &rect);
+        }
+    }
+};
+
+void drawPieces(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14], Board &board) {
     for (int rank = 0; rank < 8; rank++) {
         for (int file = 0; file < 8; file++) {
             int squareValue = board.getState().at(rank * 8 + file);
             if (squareValue > 0) {
-                SDL_Rect rect = {file * SQUARE_SIZE, (7 - rank) * SQUARE_SIZE,
-                                 SQUARE_SIZE, SQUARE_SIZE};
-                SDL_RenderCopy(renderer, pieceTextures[squareValue - 1], NULL,
-                               &rect);
+                SDL_Rect rect = {file * SQUARE_SIZE, (7 - rank) * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
+                SDL_RenderCopy(renderer, pieceTextures[squareValue - 1], NULL, &rect);
             }
         }
     }
@@ -29,8 +58,7 @@ void drawBoard(SDL_Renderer *renderer) {
             } else {
                 SDL_SetRenderDrawColor(renderer, 0x8c, 0xa2, 0xad, 0xff);
             }
-            SDL_Rect square = {file * SQUARE_SIZE, rank * SQUARE_SIZE,
-                               SQUARE_SIZE, SQUARE_SIZE};
+            SDL_Rect square = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
             SDL_RenderFillRect(renderer, &square);
         }
     }
@@ -41,8 +69,7 @@ void drawMoveOptions(SDL_Renderer *renderer, std::set<int> moveOptions) {
     for (int square : moveOptions) {
         int file = square % 8;
         int rank = 7 - square / 8;
-        SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE,
-                         SQUARE_SIZE};
+        SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
         SDL_RenderFillRect(renderer, &rect);
     }
 }
@@ -60,8 +87,7 @@ int perft(Board board, int depth) {
 
 int main(int argc, char *argv[]) {
 
-    std::string startingPos =
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";
+    std::string startingPos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";
     int plyDepth = -1;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-b")) {
@@ -85,10 +111,8 @@ int main(int argc, char *argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
     IMG_Init(IMG_INIT_PNG);
     SDL_Window *window =
-        SDL_CreateWindow("Gorbot", SDL_WINDOWPOS_CENTERED,
-                         SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, 0);
-    SDL_Renderer *renderer =
-        SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        SDL_CreateWindow("Gorbot", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, 0);
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
     const std::map<int, std::string> piecePathMap = {
@@ -105,13 +129,16 @@ int main(int argc, char *argv[]) {
         pieceTextures[i] = imageTexture;
     }
 
+    PromotionMenu promotionMenu = PromotionMenu();
     Board board = Board(startingPos);
 
     bool running = true;
     SDL_Event event;
 
     int startSquare = -1;
+    int squareClicked = -1;
     std::set<int> moveOptions;
+
     while (running) {
 
         while (SDL_PollEvent(&event)) {
@@ -119,35 +146,48 @@ int main(int argc, char *argv[]) {
                 running = false;
             }
             if (event.type == SDL_MOUSEBUTTONDOWN) {
-                int file = event.button.x / SQUARE_SIZE;
-                int rank = 7 - event.button.y / SQUARE_SIZE;
-                int squareClicked = rank * 8 + file;
-                if (startSquare == -1) {
-                    moveOptions = board.getMoveOptions(squareClicked);
-                    if (!moveOptions.empty()) {
-                        startSquare = squareClicked;
-                    }
-                } else if (startSquare >= 0) {
-                    if (moveOptions.contains(squareClicked)) {
-                        int flag = 0;
-                        /*
-                         * Promotion code here
-                        if () {
-
+                if (promotionMenu.display) {
+                    if (promotionMenu.isClicked(event.button.x, event.button.y)) {
+                        int column = (event.button.x - promotionMenu.x) / (SQUARE_SIZE * 2);
+                        int row = (event.button.y - promotionMenu.y) / (SQUARE_SIZE * 2);
+                        int flags = 8;
+                        flags |= (row * 2 + column);
+                        if (board.getState()[squareClicked]) {
+                            flags |= 4;
                         }
-                        */
-                        board = board.makeMove(
-                            Move(startSquare, squareClicked, flag));
+                        board = board.makeMove(Move(startSquare, squareClicked, flags));
+                        promotionMenu.display = false;
                         startSquare = -1;
                         moveOptions.clear();
-                    } else {
+                    }
+                } else {
+                    int file = event.button.x / SQUARE_SIZE;
+                    int rank = 7 - event.button.y / SQUARE_SIZE;
+                    squareClicked = rank * 8 + file;
+                    if (startSquare == -1) {
                         moveOptions = board.getMoveOptions(squareClicked);
-                        if (!moveOptions.empty() &&
-                            startSquare != squareClicked) {
+                        if (!moveOptions.empty()) {
                             startSquare = squareClicked;
+                        }
+                    } else if (startSquare >= 0) {
+                        if (moveOptions.contains(squareClicked)) {
+                            int flag = 0;
+                            if (board.getState()[startSquare] == 1 && squareClicked > 55 ||
+                                board.getState()[startSquare] == 9 && squareClicked < 8) {
+                                promotionMenu.display = true;
+                            } else {
+                                board = board.makeMove(Move(startSquare, squareClicked, flag));
+                                startSquare = -1;
+                                moveOptions.clear();
+                            }
                         } else {
-                            startSquare = -1;
-                            moveOptions.clear();
+                            moveOptions = board.getMoveOptions(squareClicked);
+                            if (!moveOptions.empty() && startSquare != squareClicked) {
+                                startSquare = squareClicked;
+                            } else {
+                                startSquare = -1;
+                                moveOptions.clear();
+                            }
                         }
                     }
                 }
@@ -156,12 +196,18 @@ int main(int argc, char *argv[]) {
 
         SDL_RenderClear(renderer);
         drawBoard(renderer);
+
         if (!moveOptions.empty()) {
             drawMoveOptions(renderer, moveOptions);
         }
-        drawPieces(renderer, pieceTextures, board);
-        SDL_RenderPresent(renderer);
 
+        drawPieces(renderer, pieceTextures, board);
+
+        if (promotionMenu.display) {
+            promotionMenu.draw(renderer, pieceTextures, board.getIsWhiteTurn());
+        }
+
+        SDL_RenderPresent(renderer);
         SDL_Delay(20);
     }
 

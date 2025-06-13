@@ -29,4 +29,6 @@ unsigned int Move::getDestination() { return move & 0x3f; }
 
 unsigned int Move::isCapture() { return (move >> 14) & 1; }
 
+unsigned int Move::isPromotion() { return move >> 15; }
+
 unsigned int Move::getFlags() { return (move >> 12) & 0xf; }
