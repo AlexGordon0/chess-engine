@@ -17,6 +17,7 @@ Board::Board(std::string startingPos) {
         masksInitialised = true;
     }
     convertFromFen(startingPos);
+    determineCheckStatus();
     generateLegalMoves();
 }
 
@@ -27,6 +28,7 @@ Board::Board(std::array<int, 64> _state, std::array<uint64_t, 15> _bitboards, bo
     whiteTurn = _whiteTurn;
     castlingRights = _castlingRights;
     enPassantSquare = _enPassantSquare;
+    determineCheckStatus();
     generateLegalMoves();
 }
 
@@ -172,11 +174,118 @@ void Board::calculateKingMasks() {
     }
 }
 
+void Board::determineCheckStatus() {
+    uint64_t pawnAttacks = generatePawnAttackMaps();
+    uint64_t knightAttacks = generateKnightAttackMaps();
+    uint64_t slidingAttacks = generateSlidingAttackMaps();
+    uint64_t kingAttacks = generateKingAttackMaps();
+
+    opponentAttackMap = pawnAttacks | knightAttacks | slidingAttacks | kingAttacks;
+
+    int colourValue = whiteTurn ? 0 : 8;
+    uint64_t kingLocations = bitboards[colourValue + 6];
+    int numChecks = 0;
+    if (pawnAttacks & kingLocations) {
+        numChecks++;
+    }
+    if (knightAttacks & kingLocations) {
+        numChecks++;
+    }
+    if (slidingAttacks & kingLocations) {
+        numChecks++;
+    }
+    if (kingAttacks & kingLocations) {
+        numChecks++;
+    }
+
+    if (numChecks > 1) {
+        checkStatus = 2;
+    } else if (numChecks == 1) {
+        checkStatus = 1;
+    } else {
+        checkStatus = 0;
+    }
+}
+
+uint64_t Board::generatePawnAttackMaps() {
+    if (whiteTurn) {
+        uint64_t westCaptures = bitboards[9] >> 9 & 0x7f7f7f7f7f7f7f7f;
+        uint64_t eastCaptures = bitboards[9] >> 7 & 0xfefefefefefefefe;
+        return westCaptures | eastCaptures;
+    } else {
+        uint64_t westCaptures = bitboards[1] << 7 & 0x7f7f7f7f7f7f7f7f;
+        uint64_t eastCaptures = bitboards[1] << 9 & 0xfefefefefefefefe;
+        return westCaptures | eastCaptures;
+    }
+}
+
+uint64_t Board::generateKnightAttackMaps() {
+    int colourValue = whiteTurn ? 8 : 0;
+    uint64_t bitboardCopy = bitboards[colourValue + 2];
+    uint64_t possibleMoves = 0;
+    while (bitboardCopy) {
+        int pieceSquare = std::countr_zero(bitboardCopy);
+        possibleMoves |= knightMoveMasks[pieceSquare];
+        bitboardCopy -= 1ULL << pieceSquare;
+    }
+    return possibleMoves;
+}
+
+uint64_t Board::generateSlidingAttackMaps() {
+    int directionOffsets[8] = {8, -8, -1, 1, 7, -7, -9, 9};
+    int colourValue = whiteTurn ? 8 : 0;
+    int start = 4;
+    int end = 8;
+    uint64_t possibleMoves = 0;
+    for (int i = 3; i < 6; i++) {
+        if (i == 4) {
+            start = 0;
+            end = 4;
+        }
+        if (i == 5) {
+            end = 8;
+        }
+        uint64_t bitboardCopy = bitboards[colourValue + i];
+        while (bitboardCopy) {
+            int pieceSquare = std::countr_zero(bitboardCopy);
+            for (int j = start; j < end; j++) {
+                for (int k = 1; k <= numSquaresToEdge[pieceSquare][j]; k++) {
+                    int destinationSquare = pieceSquare + directionOffsets[j] * k;
+                    if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
+                        bitboards[colourValue] >> destinationSquare & 1) {
+                        possibleMoves |= 1ULL << destinationSquare;
+                        break;
+                    }
+                    possibleMoves |= 1ULL << destinationSquare;
+                }
+            }
+            bitboardCopy -= 1ULL << pieceSquare;
+        }
+    }
+    return possibleMoves;
+}
+
+uint64_t Board::generateKingAttackMaps() {
+    int colourValue = whiteTurn ? 8 : 0;
+
+    uint64_t bitboardCopy = bitboards[colourValue + 6];
+    uint64_t possibleMoves = 0;
+    while (bitboardCopy) {
+        int pieceSquare = std::countr_zero(bitboardCopy);
+        possibleMoves |= kingMoveMasks[pieceSquare];
+        bitboardCopy -= 1ULL << pieceSquare;
+    }
+    return possibleMoves;
+}
+
 void Board::generateLegalMoves() {
     moves.clear();
-    generatePawnMoves();
-    generateKnightMoves();
-    generateSlidingMoves();
+    // If in double check only the king can move so no need to generate other moves
+    if (checkStatus != 2) {
+        generatePawnMoves();
+        generateKnightMoves();
+        generateSlidingMoves();
+    }
     generateKingMoves();
 }
 
@@ -207,36 +316,31 @@ void Board::addMovesFromBitmap(uint64_t bitmap, int startSquareOffset) {
 }
 
 void Board::generatePawnMoves() {
-    int colourValue = whiteTurn ? 0 : 8;
     if (whiteTurn) {
-        uint64_t westCaptures =
-            bitboards[colourValue + 1] << 7 & (bitboards[8] | (1ULL << enPassantSquare)) & 0x7f7f7f7f7f7f7f7f;
+        uint64_t westCaptures = bitboards[1] << 7 & (bitboards[8] | (1ULL << enPassantSquare)) & 0x7f7f7f7f7f7f7f7f;
         addMovesFromBitmap(westCaptures, -7);
 
-        uint64_t eastCaptures =
-            bitboards[colourValue + 1] << 9 & (bitboards[8] | (1ULL << enPassantSquare)) & 0xfefefefefefefefe;
+        uint64_t eastCaptures = bitboards[1] << 9 & (bitboards[8] | (1ULL << enPassantSquare)) & 0xfefefefefefefefe;
         addMovesFromBitmap(eastCaptures, -9);
 
-        uint64_t forwardMoves = bitboards[colourValue + 1] << 8 & ~(bitboards[0] | bitboards[8]);
+        uint64_t forwardMoves = bitboards[1] << 8 & ~(bitboards[0] | bitboards[8]);
         addMovesFromBitmap(forwardMoves, -8);
 
-        uint64_t unmovedPawns = bitboards[colourValue + 1] & 0xff00;
+        uint64_t unmovedPawns = bitboards[1] & 0xff00;
         uint64_t freeSquares = ~(bitboards[0] | bitboards[8]);
         uint64_t doublePawnMoves = (unmovedPawns << 8 & freeSquares) << 8 & (unmovedPawns << 16 & freeSquares);
         addMovesFromBitmap(doublePawnMoves, -16);
     } else {
-        uint64_t westCaptures =
-            bitboards[colourValue + 1] >> 9 & (bitboards[0] | (1ULL << enPassantSquare)) & 0x7f7f7f7f7f7f7f7f;
+        uint64_t westCaptures = bitboards[9] >> 9 & (bitboards[0] | (1ULL << enPassantSquare)) & 0x7f7f7f7f7f7f7f7f;
         addMovesFromBitmap(westCaptures, 9);
 
-        uint64_t eastCaptures =
-            bitboards[colourValue + 1] >> 7 & (bitboards[0] | (1ULL << enPassantSquare)) & 0xfefefefefefefefe;
+        uint64_t eastCaptures = bitboards[9] >> 7 & (bitboards[0] | (1ULL << enPassantSquare)) & 0xfefefefefefefefe;
         addMovesFromBitmap(eastCaptures, 7);
 
-        uint64_t forwardMoves = bitboards[colourValue + 1] >> 8 & ~(bitboards[0] | bitboards[8]);
+        uint64_t forwardMoves = bitboards[9] >> 8 & ~(bitboards[0] | bitboards[8]);
         addMovesFromBitmap(forwardMoves, 8);
 
-        uint64_t unmovedPawns = bitboards[colourValue + 1] & 0xff000000000000;
+        uint64_t unmovedPawns = bitboards[9] & 0xff000000000000;
         uint64_t freeSquares = ~(bitboards[0] | bitboards[8]);
         uint64_t doublePawnMoves = (unmovedPawns >> 8 & freeSquares) >> 8 & (unmovedPawns >> 16 & freeSquares);
         addMovesFromBitmap(doublePawnMoves, 16);
@@ -304,21 +408,24 @@ void Board::generateKingMoves() {
     uint64_t bitboardCopy = bitboards[colourValue + 6];
     while (bitboardCopy) {
         int pieceSquare = std::countr_zero(bitboardCopy);
-        if (pieceSquare == kingStartingSquare) {
+        if (pieceSquare == kingStartingSquare && !checkStatus) {
             if (colourCastlingRights & 1) {
                 // Check queenside castling
-                if (!(state[pieceSquare - 1] | state[pieceSquare - 2] | state[pieceSquare - 3])) {
+                uint64_t queensideCastlingMask = 1ULL << (pieceSquare - 1) | 1ULL << (pieceSquare - 2);
+                if (!(state[pieceSquare - 1] | state[pieceSquare - 2] | state[pieceSquare - 3]) &&
+                    !(queensideCastlingMask & opponentAttackMap)) {
                     moves.insert(Move(pieceSquare, pieceSquare - 2, 3));
                 }
             }
             if (colourCastlingRights & 2) {
                 // Check kingside castling
-                if (!(state[pieceSquare + 1] | state[pieceSquare + 2])) {
+                uint64_t kingsideCastlingMask = 1ULL << (pieceSquare + 1) | 1ULL << (pieceSquare + 2);
+                if (!(state[pieceSquare + 1] | state[pieceSquare + 2]) && !(kingsideCastlingMask & opponentAttackMap)) {
                     moves.insert(Move(pieceSquare, pieceSquare + 2, 2));
                 }
             }
         }
-        uint64_t possibleMoves = kingMoveMasks[pieceSquare] & ~bitboards[colourValue];
+        uint64_t possibleMoves = kingMoveMasks[pieceSquare] & ~bitboards[colourValue] & ~opponentAttackMap;
         while (possibleMoves) {
             int destinationSquare = std::countr_zero(possibleMoves);
             int flags = 0;
