@@ -177,10 +177,13 @@ void Board::calculateKingMasks() {
 void Board::determineCheckStatus() {
     uint64_t pawnAttacks = generatePawnAttackMaps();
     uint64_t knightAttacks = generateKnightAttackMaps();
-    uint64_t slidingAttacks = generateSlidingAttackMaps();
+    AttackMapPair bishopAttacks = generateBishopAttackMaps();
+    AttackMapPair rookAttacks = generateRookAttackMaps();
+    AttackMapPair queenAttacks = generateQueenAttackMaps();
     uint64_t kingAttacks = generateKingAttackMaps();
 
-    opponentAttackMap = pawnAttacks | knightAttacks | slidingAttacks | kingAttacks;
+    opponentAttackMap = pawnAttacks | knightAttacks | bishopAttacks.attackMap | rookAttacks.attackMap |
+                        queenAttacks.attackMap | kingAttacks;
 
     int colourValue = whiteTurn ? 0 : 8;
     uint64_t kingLocations = bitboards[colourValue + 6];
@@ -191,7 +194,16 @@ void Board::determineCheckStatus() {
     if (knightAttacks & kingLocations) {
         numChecks++;
     }
-    if (slidingAttacks & kingLocations) {
+    if (bishopAttacks.attackMap & kingLocations) {
+        checkBlockMap = bishopAttacks.blockPath;
+        numChecks++;
+    }
+    if (rookAttacks.attackMap & kingLocations) {
+        checkBlockMap = rookAttacks.blockPath;
+        numChecks++;
+    }
+    if (queenAttacks.attackMap & kingLocations) {
+        checkBlockMap = queenAttacks.blockPath;
         numChecks++;
     }
     if (kingAttacks & kingLocations) {
@@ -231,38 +243,112 @@ uint64_t Board::generateKnightAttackMaps() {
     return possibleMoves;
 }
 
-uint64_t Board::generateSlidingAttackMaps() {
-    int directionOffsets[8] = {8, -8, -1, 1, 7, -7, -9, 9};
+Board::AttackMapPair Board::generateBishopAttackMaps() {
+    int directionOffsets[8] = {7, -7, -9, 9};
     int colourValue = whiteTurn ? 8 : 0;
-    int start = 4;
-    int end = 8;
-    uint64_t possibleMoves = 0;
-    for (int i = 3; i < 6; i++) {
-        if (i == 4) {
-            start = 0;
-            end = 4;
-        }
-        if (i == 5) {
-            end = 8;
-        }
-        uint64_t bitboardCopy = bitboards[colourValue + i];
-        while (bitboardCopy) {
-            int pieceSquare = std::countr_zero(bitboardCopy);
-            for (int j = start; j < end; j++) {
-                for (int k = 1; k <= numSquaresToEdge[pieceSquare][j]; k++) {
-                    int destinationSquare = pieceSquare + directionOffsets[j] * k;
-                    if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
-                        bitboards[colourValue] >> destinationSquare & 1) {
-                        possibleMoves |= 1ULL << destinationSquare;
-                        break;
-                    }
-                    possibleMoves |= 1ULL << destinationSquare;
+    uint64_t bitboardCopy = bitboards[colourValue + 3];
+    int oppositionKingLocation = std::countr_zero(bitboards[14 - colourValue]);
+
+    Board::AttackMapPair pieceAttackMaps = {0, 0};
+    bool updateBlockPath = true;
+
+    while (bitboardCopy) {
+        int pieceSquare = std::countr_zero(bitboardCopy);
+        for (int i = 0; i < 4; i++) {
+            if (updateBlockPath) {
+                pieceAttackMaps.blockPath = 1ULL << pieceSquare;
+            }
+            for (int j = 1; j <= numSquaresToEdge[pieceSquare][i + 4]; j++) {
+                int destinationSquare = pieceSquare + directionOffsets[i] * j;
+                pieceAttackMaps.attackMap |= 1ULL << destinationSquare;
+                if (oppositionKingLocation == destinationSquare) {
+                    updateBlockPath = false;
+                    continue;
+                }
+                if (updateBlockPath) {
+                    pieceAttackMaps.blockPath |= 1ULL << destinationSquare;
+                }
+                if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
+                    bitboards[colourValue] >> destinationSquare & 1) {
+                    break;
                 }
             }
-            bitboardCopy -= 1ULL << pieceSquare;
         }
+        bitboardCopy -= 1ULL << pieceSquare;
     }
-    return possibleMoves;
+    return pieceAttackMaps;
+}
+
+Board::AttackMapPair Board::generateRookAttackMaps() {
+    int directionOffsets[8] = {8, -8, -1, 1};
+    int colourValue = whiteTurn ? 8 : 0;
+    uint64_t bitboardCopy = bitboards[colourValue + 4];
+    int oppositionKingLocation = std::countr_zero(bitboards[14 - colourValue]);
+
+    Board::AttackMapPair pieceAttackMaps = {0, 0};
+    bool updateBlockPath = true;
+
+    while (bitboardCopy) {
+        int pieceSquare = std::countr_zero(bitboardCopy);
+        for (int i = 0; i < 4; i++) {
+            if (updateBlockPath) {
+                pieceAttackMaps.blockPath = 1ULL << pieceSquare;
+            }
+            for (int j = 1; j <= numSquaresToEdge[pieceSquare][i]; j++) {
+                int destinationSquare = pieceSquare + directionOffsets[i] * j;
+                pieceAttackMaps.attackMap |= 1ULL << destinationSquare;
+                if (oppositionKingLocation == destinationSquare) {
+                    updateBlockPath = false;
+                    continue;
+                }
+                if (updateBlockPath) {
+                    pieceAttackMaps.blockPath |= 1ULL << destinationSquare;
+                }
+                if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
+                    bitboards[colourValue] >> destinationSquare & 1) {
+                    break;
+                }
+            }
+        }
+        bitboardCopy -= 1ULL << pieceSquare;
+    }
+    return pieceAttackMaps;
+}
+
+Board::AttackMapPair Board::generateQueenAttackMaps() {
+    int directionOffsets[8] = {8, -8, -1, 1, 7, -7, -9, 9};
+    int colourValue = whiteTurn ? 8 : 0;
+    uint64_t bitboardCopy = bitboards[colourValue + 5];
+    int oppositionKingLocation = std::countr_zero(bitboards[14 - colourValue]);
+
+    Board::AttackMapPair pieceAttackMaps = {0, 0};
+    bool updateBlockPath = true;
+
+    while (bitboardCopy) {
+        int pieceSquare = std::countr_zero(bitboardCopy);
+        for (int i = 0; i < 8; i++) {
+            if (updateBlockPath) {
+                pieceAttackMaps.blockPath = 1ULL << pieceSquare;
+            }
+            for (int j = 1; j <= numSquaresToEdge[pieceSquare][i]; j++) {
+                int destinationSquare = pieceSquare + directionOffsets[i] * j;
+                pieceAttackMaps.attackMap |= 1ULL << destinationSquare;
+                if (oppositionKingLocation == destinationSquare) {
+                    updateBlockPath = false;
+                    continue;
+                }
+                if (updateBlockPath) {
+                    pieceAttackMaps.blockPath |= 1ULL << destinationSquare;
+                }
+                if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
+                    bitboards[colourValue] >> destinationSquare & 1) {
+                    break;
+                }
+            }
+        }
+        bitboardCopy -= 1ULL << pieceSquare;
+    }
+    return pieceAttackMaps;
 }
 
 uint64_t Board::generateKingAttackMaps() {
@@ -318,31 +404,55 @@ void Board::addMovesFromBitmap(uint64_t bitmap, int startSquareOffset) {
 void Board::generatePawnMoves() {
     if (whiteTurn) {
         uint64_t westCaptures = bitboards[1] << 7 & (bitboards[8] | (1ULL << enPassantSquare)) & 0x7f7f7f7f7f7f7f7f;
+        if (checkStatus) {
+            westCaptures &= checkBlockMap;
+        }
         addMovesFromBitmap(westCaptures, -7);
 
         uint64_t eastCaptures = bitboards[1] << 9 & (bitboards[8] | (1ULL << enPassantSquare)) & 0xfefefefefefefefe;
+        if (checkStatus) {
+            eastCaptures &= checkBlockMap;
+        }
         addMovesFromBitmap(eastCaptures, -9);
 
         uint64_t forwardMoves = bitboards[1] << 8 & ~(bitboards[0] | bitboards[8]);
+        if (checkStatus) {
+            forwardMoves &= checkBlockMap;
+        }
         addMovesFromBitmap(forwardMoves, -8);
 
         uint64_t unmovedPawns = bitboards[1] & 0xff00;
         uint64_t freeSquares = ~(bitboards[0] | bitboards[8]);
         uint64_t doublePawnMoves = (unmovedPawns << 8 & freeSquares) << 8 & (unmovedPawns << 16 & freeSquares);
+        if (checkStatus) {
+            doublePawnMoves &= checkBlockMap;
+        }
         addMovesFromBitmap(doublePawnMoves, -16);
     } else {
         uint64_t westCaptures = bitboards[9] >> 9 & (bitboards[0] | (1ULL << enPassantSquare)) & 0x7f7f7f7f7f7f7f7f;
+        if (checkStatus) {
+            westCaptures &= checkBlockMap;
+        }
         addMovesFromBitmap(westCaptures, 9);
 
         uint64_t eastCaptures = bitboards[9] >> 7 & (bitboards[0] | (1ULL << enPassantSquare)) & 0xfefefefefefefefe;
+        if (checkStatus) {
+            eastCaptures &= checkBlockMap;
+        }
         addMovesFromBitmap(eastCaptures, 7);
 
         uint64_t forwardMoves = bitboards[9] >> 8 & ~(bitboards[0] | bitboards[8]);
+        if (checkStatus) {
+            forwardMoves &= checkBlockMap;
+        }
         addMovesFromBitmap(forwardMoves, 8);
 
         uint64_t unmovedPawns = bitboards[9] & 0xff000000000000;
         uint64_t freeSquares = ~(bitboards[0] | bitboards[8]);
         uint64_t doublePawnMoves = (unmovedPawns >> 8 & freeSquares) >> 8 & (unmovedPawns >> 16 & freeSquares);
+        if (checkStatus) {
+            doublePawnMoves &= checkBlockMap;
+        }
         addMovesFromBitmap(doublePawnMoves, 16);
     }
 }
@@ -353,6 +463,9 @@ void Board::generateKnightMoves() {
     while (bitboardCopy) {
         int pieceSquare = std::countr_zero(bitboardCopy);
         uint64_t possibleMoves = knightMoveMasks[pieceSquare] & ~bitboards[colourValue];
+        if (checkStatus) {
+            possibleMoves &= checkBlockMap;
+        }
         while (possibleMoves) {
             int destinationSquare = std::countr_zero(possibleMoves);
             int flags = 0;
@@ -389,10 +502,14 @@ void Board::generateSlidingMoves() {
                         break;
                     }
                     if (bitboards[8 - colourValue] >> destinationSquare & 1) {
-                        moves.insert(Move(pieceSquare, destinationSquare, 4));
+                        if (checkStatus && (checkBlockMap >> destinationSquare & 1) || !checkStatus) {
+                            moves.insert(Move(pieceSquare, destinationSquare, 4));
+                        }
                         break;
                     }
-                    moves.insert(Move(pieceSquare, destinationSquare, 0));
+                    if (checkStatus && (checkBlockMap >> destinationSquare & 1) || !checkStatus) {
+                        moves.insert(Move(pieceSquare, destinationSquare, 0));
+                    }
                 }
             }
             bitboardCopy -= 1ULL << pieceSquare;
@@ -518,6 +635,8 @@ Board Board::makeMove(Move passedInMove) {
     if (whiteTurn) {
         if (requestedMove.getStart() == 0) {
             newCastlingRights &= 11;
+        } else if (requestedMove.getStart() == 4) {
+            newCastlingRights &= 3;
         } else if (requestedMove.getStart() == 7) {
             newCastlingRights &= 7;
         } else if (requestedMove.getDestination() == 56) {
@@ -528,6 +647,8 @@ Board Board::makeMove(Move passedInMove) {
     } else {
         if (requestedMove.getStart() == 56) {
             newCastlingRights &= 14;
+        } else if (requestedMove.getStart() == 60) {
+            newCastlingRights &= 12;
         } else if (requestedMove.getStart() == 63) {
             newCastlingRights &= 13;
         } else if (requestedMove.getDestination() == 0) {

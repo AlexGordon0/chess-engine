@@ -73,17 +73,27 @@ class Board {
      * 2 = double check */
     int checkStatus;
     uint64_t opponentAttackMap;
+    uint64_t checkBlockMap;
 
     static void calculateSquareData();
     static void calculateKnightMasks();
     static void calculateKingMasks();
 
     void convertFromFen(std::string fenString);
+
+    struct AttackMapPair {
+        uint64_t attackMap;
+        uint64_t blockPath;
+    };
+
     void determineCheckStatus();
     uint64_t generatePawnAttackMaps();
     uint64_t generateKnightAttackMaps();
-    uint64_t generateSlidingAttackMaps();
+    AttackMapPair generateBishopAttackMaps();
+    AttackMapPair generateRookAttackMaps();
+    AttackMapPair generateQueenAttackMaps();
     uint64_t generateKingAttackMaps();
+
     void generateLegalMoves();
     void generatePawnMoves();
     void generateKnightMoves();
