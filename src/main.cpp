@@ -1,6 +1,7 @@
 #include "board.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <cstdint>
 #include <map>
 
 #define WINDOW_SIZE 1200
@@ -71,6 +72,18 @@ void drawMoveOptions(SDL_Renderer *renderer, std::set<int> moveOptions) {
         int rank = 7 - square / 8;
         SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
         SDL_RenderFillRect(renderer, &rect);
+    }
+}
+
+void drawOpponentAttackMap(SDL_Renderer *renderer, uint64_t opponentAttackMap) {
+    SDL_SetRenderDrawColor(renderer, 0x00, 0xff, 0x00, 0x55);
+    for (int square = 0; square < 64; square++) {
+        if (1ULL << square & opponentAttackMap) {
+            int file = square % 8;
+            int rank = 7 - square / 8;
+            SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
+            SDL_RenderFillRect(renderer, &rect);
+        }
     }
 }
 
@@ -200,6 +213,7 @@ int main(int argc, char *argv[]) {
         if (!moveOptions.empty()) {
             drawMoveOptions(renderer, moveOptions);
         }
+        // drawOpponentAttackMap(renderer, board.getOpponentAttackMap());
 
         drawPieces(renderer, pieceTextures, board);
 

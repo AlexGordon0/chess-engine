@@ -32,14 +32,17 @@ class Board {
     std::set<Move> getMoves();
     int getEnPassantSquare();
     bool getIsWhiteTurn();
+    uint64_t getOpponentAttackMap();
 
     void printBoard();
-    void printBitboard(int index);
+    void printBitboard(uint64_t bitboard);
     void printMoves();
 
   private:
     static std::array<std::array<int, 8>, 64> numSquaresToEdge;
     static std::array<uint64_t, 64> knightMoveMasks;
+    static std::array<uint64_t, 64> bishopMoveMasks;
+    static std::array<uint64_t, 64> rookMoveMasks;
     static std::array<uint64_t, 64> kingMoveMasks;
 
     std::array<int, 64> state = {0};
@@ -63,7 +66,7 @@ class Board {
      * 15 - empty */
     std::array<uint64_t, 15> bitboards = {0};
 
-    bool whiteTurn;
+    bool isWhiteTurn;
     int castlingRights;
     int enPassantSquare;
     std::set<Move> moves;
@@ -73,26 +76,26 @@ class Board {
      * 2 = double check */
     int checkStatus;
     uint64_t opponentAttackMap;
-    uint64_t checkBlockMap;
+    uint64_t checkEvasionMask;
+    uint64_t pinnedPieces;
 
     static void calculateSquareData();
     static void calculateKnightMasks();
+    static void calculateBishopMasks();
+    static void calculateRookMasks();
     static void calculateKingMasks();
 
     void convertFromFen(std::string fenString);
 
-    struct AttackMapPair {
-        uint64_t attackMap;
-        uint64_t blockPath;
-    };
-
     void determineCheckStatus();
     uint64_t generatePawnAttackMaps();
     uint64_t generateKnightAttackMaps();
-    AttackMapPair generateBishopAttackMaps();
-    AttackMapPair generateRookAttackMaps();
-    AttackMapPair generateQueenAttackMaps();
+    uint64_t generateBishopAttackMaps();
+    uint64_t generateRookAttackMaps();
+    uint64_t generateQueenAttackMaps();
     uint64_t generateKingAttackMaps();
+
+    void calculatePinnedPieces();
 
     void generateLegalMoves();
     void generatePawnMoves();
