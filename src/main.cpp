@@ -3,6 +3,7 @@
 #include <SDL2/SDL_image.h>
 #include <cstdint>
 #include <map>
+#include <chrono>
 
 #define WINDOW_SIZE 1200
 #define SQUARE_SIZE (WINDOW_SIZE / 8)
@@ -93,7 +94,8 @@ int perft(Board board, int depth) {
     }
     int totalMoves = 0;
     for (Move move : board.getMoves()) {
-        totalMoves += perft(board.makeMove(move), depth - 1);
+        int numMoves = perft(board.makeMove(move), depth - 1);
+        totalMoves += numMoves;
     }
     return totalMoves;
 }
@@ -116,8 +118,22 @@ int main(int argc, char *argv[]) {
     }
 
     if (plyDepth >= 0) {
-        int moves = perft(Board(startingPos), plyDepth);
-        std::cout << moves << '\n';
+        for (int i = 0; i <= plyDepth; i++) {
+            std::chrono::duration start = std::chrono::high_resolution_clock().now().time_since_epoch();
+            int startMs = std::chrono::duration_cast<std::chrono::microseconds>(start).count();
+            
+            int moves = perft(Board(startingPos), i);
+
+            std::chrono::duration end = std::chrono::high_resolution_clock().now().time_since_epoch();
+            int endMs = std::chrono::duration_cast<std::chrono::microseconds>(end).count();
+            double timeElapsed = endMs - startMs;
+            double nps = 0;
+            if (timeElapsed) {
+                nps = (double) moves / timeElapsed * 1000000;
+            }
+
+            std::cout << i << ": " << moves << " " << timeElapsed / 1000 << "ms @ " << nps << "n/s" << '\n';
+        }
         return 0;
     }
 

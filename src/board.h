@@ -39,12 +39,6 @@ class Board {
     void printMoves();
 
   private:
-    static std::array<std::array<int, 8>, 64> numSquaresToEdge;
-    static std::array<uint64_t, 64> knightMoveMasks;
-    static std::array<uint64_t, 64> bishopMoveMasks;
-    static std::array<uint64_t, 64> rookMoveMasks;
-    static std::array<uint64_t, 64> kingMoveMasks;
-
     std::array<int, 64> state = {0};
 
     /* Bitboards indexes are:
@@ -79,12 +73,6 @@ class Board {
     uint64_t checkEvasionMask;
     uint64_t pinnedPieces;
 
-    static void calculateSquareData();
-    static void calculateKnightMasks();
-    static void calculateBishopMasks();
-    static void calculateRookMasks();
-    static void calculateKingMasks();
-
     void convertFromFen(std::string fenString);
 
     void determineCheckStatus();
@@ -96,6 +84,8 @@ class Board {
     uint64_t generateKingAttackMaps();
 
     void calculatePinnedPieces();
+    void addPinnedPieceMoves(int pieceSquare, uint64_t pinnedMovesMask, bool isDiagonalPin);
+    void addPinnedPawnMoves(int pieceSquare, uint64_t pinnedMovesMask);
 
     void generateLegalMoves();
     void generatePawnMoves();

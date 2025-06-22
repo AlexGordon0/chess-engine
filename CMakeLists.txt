@@ -13,6 +13,7 @@ add_executable(${PROJECT_NAME}
   src/main.cpp
   src/board.cpp
   src/move.cpp
+  src/masks.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
