@@ -1,12 +1,20 @@
 #include "board.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <array>
+#include <chrono>
 #include <cstdint>
 #include <map>
-#include <chrono>
 
 #define WINDOW_SIZE 1200
 #define SQUARE_SIZE (WINDOW_SIZE / 8)
+
+const std::array<std::string, 64> squareNotation = {
+    "a1", "b1", "c1", "d1", "e1", "f1", "g1", "h1", "a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2",
+    "a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3", "a4", "b4", "c4", "d4", "e4", "f4", "g4", "h4",
+    "a5", "b5", "c5", "d5", "e5", "f5", "g5", "h5", "a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6",
+    "a7", "b7", "c7", "d7", "e7", "f7", "g7", "h7", "a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8",
+};
 
 class PromotionMenu {
   public:
@@ -34,7 +42,7 @@ class PromotionMenu {
         SDL_RenderFillRect(renderer, &rect);
         int pieceColour = isWhiteTurn ? 0 : 8;
         for (int i = 0; i < 4; i++) {
-            SDL_Rect rect = {x + (i / 2) * SQUARE_SIZE * 2, y + (i % 2) * SQUARE_SIZE * 2, width / 2, height / 2};
+            SDL_Rect rect = {x + (i / 2) * SQUARE_SIZE * 2, y + (i & 1) * SQUARE_SIZE * 2, width / 2, height / 2};
             SDL_RenderCopy(renderer, pieceTextures[pieceColour + i + 1], NULL, &rect);
         }
     }
@@ -55,7 +63,7 @@ void drawPieces(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14], Board &b
 void drawBoard(SDL_Renderer *renderer) {
     for (int rank = 0; rank < 8; rank++) {
         for (int file = 0; file < 8; file++) {
-            if ((rank + file) % 2 == 0) {
+            if (((rank + file) & 1) == 0) {
                 SDL_SetRenderDrawColor(renderer, 0xde, 0xe3, 0xe6, 0xff);
             } else {
                 SDL_SetRenderDrawColor(renderer, 0x8c, 0xa2, 0xad, 0xff);
@@ -69,7 +77,7 @@ void drawBoard(SDL_Renderer *renderer) {
 void drawMoveOptions(SDL_Renderer *renderer, std::set<int> moveOptions) {
     SDL_SetRenderDrawColor(renderer, 0xff, 0x00, 0x00, 0x55);
     for (int square : moveOptions) {
-        int file = square % 8;
+        int file = square & 7;
         int rank = 7 - square / 8;
         SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
         SDL_RenderFillRect(renderer, &rect);
@@ -80,7 +88,7 @@ void drawOpponentAttackMap(SDL_Renderer *renderer, uint64_t opponentAttackMap) {
     SDL_SetRenderDrawColor(renderer, 0x00, 0xff, 0x00, 0x55);
     for (int square = 0; square < 64; square++) {
         if (1ULL << square & opponentAttackMap) {
-            int file = square % 8;
+            int file = square & 7;
             int rank = 7 - square / 8;
             SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
             SDL_RenderFillRect(renderer, &rect);
@@ -88,13 +96,17 @@ void drawOpponentAttackMap(SDL_Renderer *renderer, uint64_t opponentAttackMap) {
     }
 }
 
-int perft(Board board, int depth) {
+int perft(Board board, int depth, bool topLevel = true) {
     if (depth == 0) {
         return 1;
     }
     int totalMoves = 0;
     for (Move move : board.getMoves()) {
-        int numMoves = perft(board.makeMove(move), depth - 1);
+        int numMoves = perft(board.makeMove(move), depth - 1, false);
+        // if (topLevel) {
+        //     std::cout << squareNotation[move.getStart()] << "->" << squareNotation[move.getDestination()] << ", "
+        //               << move.getFlags() << ": " << numMoves << '\n';
+        // }
         totalMoves += numMoves;
     }
     return totalMoves;
@@ -121,7 +133,7 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i <= plyDepth; i++) {
             std::chrono::duration start = std::chrono::high_resolution_clock().now().time_since_epoch();
             int startMs = std::chrono::duration_cast<std::chrono::microseconds>(start).count();
-            
+
             int moves = perft(Board(startingPos), i);
 
             std::chrono::duration end = std::chrono::high_resolution_clock().now().time_since_epoch();
@@ -129,7 +141,7 @@ int main(int argc, char *argv[]) {
             double timeElapsed = endMs - startMs;
             double nps = 0;
             if (timeElapsed) {
-                nps = (double) moves / timeElapsed * 1000000;
+                nps = (double)moves / timeElapsed * 1000000;
             }
 
             std::cout << i << ": " << moves << " " << timeElapsed / 1000 << "ms @ " << nps << "n/s" << '\n';
@@ -200,12 +212,11 @@ int main(int argc, char *argv[]) {
                         }
                     } else if (startSquare >= 0) {
                         if (moveOptions.contains(squareClicked)) {
-                            int flag = 0;
                             if (board.getState()[startSquare] == 1 && squareClicked > 55 ||
                                 board.getState()[startSquare] == 9 && squareClicked < 8) {
                                 promotionMenu.display = true;
                             } else {
-                                board = board.makeMove(Move(startSquare, squareClicked, flag));
+                                board = board.makeMove(Move(startSquare, squareClicked, 0));
                                 startSquare = -1;
                                 moveOptions.clear();
                             }

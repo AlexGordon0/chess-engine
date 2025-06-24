@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <iostream>
 #include <set>
+#include <vector>
 
 class Move {
   public:
@@ -29,7 +30,7 @@ class Board {
 
     std::set<int> getMoveOptions(int startSquare);
     std::array<int, 64> getState();
-    std::set<Move> getMoves();
+    std::vector<Move> getMoves();
     int getEnPassantSquare();
     bool getIsWhiteTurn();
     uint64_t getOpponentAttackMap();
@@ -63,7 +64,7 @@ class Board {
     bool isWhiteTurn;
     int castlingRights;
     int enPassantSquare;
-    std::set<Move> moves;
+    std::vector<Move> moves;
 
     /* 0 = no check
      * 1 = check
@@ -93,4 +94,5 @@ class Board {
     void generateSlidingMoves();
     void generateKingMoves();
     void addMovesFromBitmap(uint64_t bitmap, int startSquareOffset);
+    bool checkEnPassantPin(int startSquare);
 };
