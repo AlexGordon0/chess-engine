@@ -216,7 +216,8 @@ int main(int argc, char *argv[]) {
                                 board.getState()[startSquare] == 9 && squareClicked < 8) {
                                 promotionMenu.display = true;
                             } else {
-                                board = board.makeMove(Move(startSquare, squareClicked, 0));
+                                int flag = board.calculateFlag(startSquare, squareClicked);
+                                board = board.makeMove(Move(startSquare, squareClicked, flag));
                                 startSquare = -1;
                                 moveOptions.clear();
                             }

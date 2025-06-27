@@ -1,13 +1,14 @@
 #include "board.h"
+#include "magics.h"
 #include "masks.h"
 #include <bit>
 #include <cstdint>
 #include <map>
 #include <sstream>
-#include <vector>
 
 Board::Board(std::string startingPos) {
     convertFromFen(startingPos);
+    moves.reserve(40);
     determineCheckStatus();
     calculatePinnedPieces();
     generateLegalMoves();
@@ -20,6 +21,7 @@ Board::Board(std::array<int, 64> _state, std::array<uint64_t, 15> _bitboards, bo
     isWhiteTurn = _whiteTurn;
     castlingRights = _castlingRights;
     enPassantSquare = _enPassantSquare;
+    moves.reserve(40);
     determineCheckStatus();
     calculatePinnedPieces();
     generateLegalMoves();
@@ -98,41 +100,22 @@ void Board::determineCheckStatus() {
     checkEvasionMask = 0xffffffffffffffff;
     uint64_t pawnAttacks = generatePawnAttackMaps();
     uint64_t knightAttacks = generateKnightAttackMaps();
-    uint64_t bishopAttacks = generateBishopAttackMaps();
-    uint64_t rookAttacks = generateRookAttackMaps();
-    uint64_t queenAttacks = generateQueenAttackMaps();
+    uint64_t slidingAttacks = generateSlidingAttackMaps();
     uint64_t kingAttacks = generateKingAttackMaps();
 
-    opponentAttackMap = pawnAttacks | knightAttacks | bishopAttacks | rookAttacks | queenAttacks | kingAttacks;
+    opponentAttackMap = pawnAttacks | knightAttacks | slidingAttacks | kingAttacks;
 
     int colourValue = isWhiteTurn ? 0 : 8;
     uint64_t kingLocation = bitboards[colourValue + 6];
-    int numChecks = 0;
+    numChecks = 0;
     if (pawnAttacks & kingLocation) {
         numChecks++;
     }
     if (knightAttacks & kingLocation) {
         numChecks++;
     }
-    if (bishopAttacks & kingLocation) {
-        numChecks++;
-    }
-    if (rookAttacks & kingLocation) {
-        numChecks++;
-    }
-    if (queenAttacks & kingLocation) {
-        numChecks++;
-    }
     if (kingAttacks & kingLocation) {
         numChecks++;
-    }
-
-    if (numChecks > 1) {
-        checkStatus = 2;
-    } else if (numChecks == 1) {
-        checkStatus = 1;
-    } else {
-        checkStatus = 0;
     }
 }
 
@@ -199,127 +182,69 @@ uint64_t Board::generateKnightAttackMaps() {
     return attackMap;
 }
 
-uint64_t Board::generateBishopAttackMaps() {
-    int directionOffsets[4] = {7, -7, -9, 9};
+uint64_t Board::generateSlidingAttackMaps() {
     int colourValue = isWhiteTurn ? 8 : 0;
-    uint64_t bitboardCopy = bitboards[colourValue + 3];
-    uint64_t oppostionKingBitboard = bitboards[14 - colourValue];
-    int oppositionKingLocation = std::countr_zero(oppostionKingBitboard);
-
     uint64_t attackMap = 0;
-    uint64_t blockPath = 0;
-    bool updateBlockPath = true;
+    uint64_t oppositionKing = bitboards[14 - colourValue];
 
-    while (bitboardCopy) {
-        int pieceSquare = std::countr_zero(bitboardCopy);
-        for (int i = 0; i < 4; i++) {
-            if (updateBlockPath) {
-                blockPath = 1ULL << pieceSquare;
-            }
-            for (int j = 1; j <= masks::numSquaresToEdge[pieceSquare][i + 4]; j++) {
-                int destinationSquare = pieceSquare + directionOffsets[i] * j;
-                attackMap |= 1ULL << destinationSquare;
-                if (oppositionKingLocation == destinationSquare) {
-                    updateBlockPath = false;
-                    continue;
-                }
-                if (updateBlockPath) {
-                    blockPath |= 1ULL << destinationSquare;
-                }
-                if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
-                    bitboards[colourValue] >> destinationSquare & 1) {
-                    break;
+    for (int i = 3; i < 6; i++) {
+        uint64_t bitboardCopy = bitboards[colourValue + i];
+        while (bitboardCopy) {
+            int pieceSquare = std::countr_zero(bitboardCopy);
+
+            if (i == 3 | i == 5) {
+                uint64_t occupancyMask = magics::bishopOccupancyMasks[pieceSquare];
+                uint64_t magic = magics::bishopMagics[pieceSquare];
+                int numBits = magics::bishopNumBits[pieceSquare];
+                int index =
+                    ((((bitboards[0] | bitboards[8]) & ~oppositionKing) & occupancyMask) * magic) >> (64 - numBits);
+                uint64_t possibleMoves = magics::bishopLookupTable[pieceSquare][index];
+                attackMap |= possibleMoves;
+                if (possibleMoves & oppositionKing) {
+                    numChecks++;
+                    calculateBlockMask(pieceSquare, std::countr_zero(oppositionKing), true);
                 }
             }
+            if (i == 4 | i == 5) {
+                uint64_t occupancyMask = magics::rookOccupancyMasks[pieceSquare];
+                uint64_t magic = magics::rookMagics[pieceSquare];
+                int numBits = magics::rookNumBits[pieceSquare];
+                int index =
+                    ((((bitboards[0] | bitboards[8]) & ~oppositionKing) & occupancyMask) * magic) >> (64 - numBits);
+                uint64_t possibleMoves = magics::rookLookupTable[pieceSquare][index];
+                attackMap |= possibleMoves;
+                if (possibleMoves & oppositionKing) {
+                    numChecks++;
+                    calculateBlockMask(pieceSquare, std::countr_zero(oppositionKing), false);
+                }
+            }
+
+            bitboardCopy -= 1ULL << pieceSquare;
         }
-        bitboardCopy -= 1ULL << pieceSquare;
     }
-    if (attackMap & oppostionKingBitboard) {
-        checkEvasionMask = blockPath;
-    }
+
     return attackMap;
 }
 
-uint64_t Board::generateRookAttackMaps() {
-    int directionOffsets[4] = {8, -8, -1, 1};
-    int colourValue = isWhiteTurn ? 8 : 0;
-    uint64_t bitboardCopy = bitboards[colourValue + 4];
-    uint64_t oppostionKingBitboard = bitboards[14 - colourValue];
-    int oppositionKingLocation = std::countr_zero(oppostionKingBitboard);
+void Board::calculateBlockMask(int pieceSquare, int kingSquare, bool isBishop) {
+    uint64_t magic = isBishop ? magics::bishopMagics[pieceSquare] : magics::rookMagics[pieceSquare];
+    uint64_t occupancyMask =
+        isBishop ? magics::bishopOccupancyMasks[pieceSquare] : magics::rookOccupancyMasks[pieceSquare];
+    int numBits = isBishop ? magics::bishopNumBits[pieceSquare] : magics::rookNumBits[pieceSquare];
 
-    uint64_t attackMap = 0;
-    uint64_t blockPath = 0;
-    bool updateBlockPath = true;
+    int pieceIndex = (((bitboards[0] | bitboards[8]) & occupancyMask) * magic) >> (64 - numBits);
+    uint64_t pieceAttacks = isBishop ? magics::bishopLookupTable[pieceSquare][pieceIndex]
+                                     : magics::rookLookupTable[pieceSquare][pieceIndex];
 
-    while (bitboardCopy) {
-        int pieceSquare = std::countr_zero(bitboardCopy);
-        for (int i = 0; i < 4; i++) {
-            if (updateBlockPath) {
-                blockPath = 1ULL << pieceSquare;
-            }
-            for (int j = 1; j <= masks::numSquaresToEdge[pieceSquare][i]; j++) {
-                int destinationSquare = pieceSquare + directionOffsets[i] * j;
-                attackMap |= 1ULL << destinationSquare;
-                if (oppositionKingLocation == destinationSquare) {
-                    updateBlockPath = false;
-                    continue;
-                }
-                if (updateBlockPath) {
-                    blockPath |= 1ULL << destinationSquare;
-                }
-                if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
-                    bitboards[colourValue] >> destinationSquare & 1) {
-                    break;
-                }
-            }
-        }
-        bitboardCopy -= 1ULL << pieceSquare;
-    }
-    if (attackMap & oppostionKingBitboard) {
-        checkEvasionMask = blockPath;
-    }
-    return attackMap;
-}
+    magic = isBishop ? magics::bishopMagics[kingSquare] : magics::rookMagics[kingSquare];
+    occupancyMask = isBishop ? magics::bishopOccupancyMasks[kingSquare] : magics::rookOccupancyMasks[kingSquare];
+    numBits = isBishop ? magics::bishopNumBits[kingSquare] : magics::rookNumBits[kingSquare];
 
-uint64_t Board::generateQueenAttackMaps() {
-    int directionOffsets[8] = {8, -8, -1, 1, 7, -7, -9, 9};
-    int colourValue = isWhiteTurn ? 8 : 0;
-    uint64_t bitboardCopy = bitboards[colourValue + 5];
-    uint64_t oppostionKingBitboard = bitboards[14 - colourValue];
-    int oppositionKingLocation = std::countr_zero(oppostionKingBitboard);
+    int kingIndex = (((bitboards[0] | bitboards[8]) & occupancyMask) * magic) >> (64 - numBits);
+    uint64_t kingAttacks =
+        isBishop ? magics::bishopLookupTable[kingSquare][kingIndex] : magics::rookLookupTable[kingSquare][kingIndex];
 
-    uint64_t attackMap = 0;
-    uint64_t blockPath = 0;
-    bool updateBlockPath = true;
-
-    while (bitboardCopy) {
-        int pieceSquare = std::countr_zero(bitboardCopy);
-        for (int i = 0; i < 8; i++) {
-            if (updateBlockPath) {
-                blockPath = 1ULL << pieceSquare;
-            }
-            for (int j = 1; j <= masks::numSquaresToEdge[pieceSquare][i]; j++) {
-                int destinationSquare = pieceSquare + directionOffsets[i] * j;
-                attackMap |= 1ULL << destinationSquare;
-                if (oppositionKingLocation == destinationSquare) {
-                    updateBlockPath = false;
-                    continue;
-                }
-                if (updateBlockPath) {
-                    blockPath |= 1ULL << destinationSquare;
-                }
-                if (bitboards[8 - colourValue] >> destinationSquare & 1 ||
-                    bitboards[colourValue] >> destinationSquare & 1) {
-                    break;
-                }
-            }
-        }
-        bitboardCopy -= 1ULL << pieceSquare;
-    }
-    if (attackMap & oppostionKingBitboard) {
-        checkEvasionMask = blockPath;
-    }
-    return attackMap;
+    checkEvasionMask = pieceAttacks & kingAttacks | 1ULL << pieceSquare;
 }
 
 uint64_t Board::generateKingAttackMaps() {
@@ -447,7 +372,7 @@ void Board::addPinnedPawnMoves(int pieceSquare, uint64_t pinnedMovesMask) {
 
 void Board::generateLegalMoves() {
     // If in double check only the king can move so no need to generate other moves
-    if (checkStatus != 2) {
+    if (numChecks < 2) {
         generatePawnMoves();
         generateKnightMoves();
         generateSlidingMoves();
@@ -580,38 +505,41 @@ void Board::generateKnightMoves() {
     }
 }
 
+void Board::addSlidingMoves(uint64_t possibleMoves, int startSquare) {
+    while (possibleMoves) {
+        int destinationSquare = std::countr_zero(possibleMoves);
+        if (state[destinationSquare]) {
+            moves.push_back(Move(startSquare, destinationSquare, 4));
+        } else {
+            moves.push_back(Move(startSquare, destinationSquare, 0));
+        }
+        possibleMoves -= 1ULL << destinationSquare;
+    }
+}
+
 void Board::generateSlidingMoves() {
-    int directionOffsets[8] = {8, -8, -1, 1, 7, -7, -9, 9};
     int colourValue = isWhiteTurn ? 0 : 8;
-    int start = 4;
-    int end = 8;
     for (int i = 3; i < 6; i++) {
-        if (i == 4) {
-            start = 0;
-            end = 4;
-        }
-        if (i == 5) {
-            end = 8;
-        }
         uint64_t bitboardCopy = bitboards[colourValue + i] & ~pinnedPieces;
         while (bitboardCopy) {
             int pieceSquare = std::countr_zero(bitboardCopy);
-            for (int j = start; j < end; j++) {
-                for (int k = 1; k <= masks::numSquaresToEdge[pieceSquare][j]; k++) {
-                    int destinationSquare = pieceSquare + directionOffsets[j] * k;
-                    if (bitboards[colourValue] >> destinationSquare & 1) {
-                        break;
-                    }
-                    if (bitboards[8 - colourValue] >> destinationSquare & 1) {
-                        if (checkEvasionMask >> destinationSquare & 1) {
-                            moves.push_back(Move(pieceSquare, destinationSquare, 4));
-                        }
-                        break;
-                    }
-                    if (checkEvasionMask >> destinationSquare & 1) {
-                        moves.push_back(Move(pieceSquare, destinationSquare, 0));
-                    }
-                }
+            if (i == 3 | i == 5) {
+                uint64_t occupancyMask = magics::bishopOccupancyMasks[pieceSquare];
+                uint64_t magic = magics::bishopMagics[pieceSquare];
+                int numBits = magics::bishopNumBits[pieceSquare];
+                int index = (((bitboards[0] | bitboards[8]) & occupancyMask) * magic) >> (64 - numBits);
+                uint64_t possibleMoves =
+                    magics::bishopLookupTable[pieceSquare][index] & checkEvasionMask & ~bitboards[colourValue];
+                addSlidingMoves(possibleMoves, pieceSquare);
+            }
+            if (i == 4 | i == 5) {
+                uint64_t occupancyMask = magics::rookOccupancyMasks[pieceSquare];
+                uint64_t magic = magics::rookMagics[pieceSquare];
+                int numBits = magics::rookNumBits[pieceSquare];
+                int index = (((bitboards[0] | bitboards[8]) & occupancyMask) * magic) >> (64 - numBits);
+                uint64_t possibleMoves =
+                    magics::rookLookupTable[pieceSquare][index] & checkEvasionMask & ~bitboards[colourValue];
+                addSlidingMoves(possibleMoves, pieceSquare);
             }
             bitboardCopy -= 1ULL << pieceSquare;
         }
@@ -626,7 +554,7 @@ void Board::generateKingMoves() {
     uint64_t bitboardCopy = bitboards[colourValue + 6];
     while (bitboardCopy) {
         int pieceSquare = std::countr_zero(bitboardCopy);
-        if (pieceSquare == kingStartingSquare && !checkStatus) {
+        if (pieceSquare == kingStartingSquare && !numChecks) {
             if (colourCastlingRights & 1) {
                 // Check queenside castling
                 uint64_t queensideCastlingMask = 1ULL << (pieceSquare - 1) | 1ULL << (pieceSquare - 2);
@@ -657,16 +585,11 @@ void Board::generateKingMoves() {
     }
 }
 
-Board Board::makeMove(Move passedInMove) {
-    Move requestedMove = passedInMove;
-    if (passedInMove.getFlags() == 0) {
-        for (Move move : moves) {
-            if (passedInMove.getStart() == move.getStart() && passedInMove.getDestination() == move.getDestination()) {
-                requestedMove = move;
-                break;
-            }
-        }
-    }
+Board Board::makeMove(Move requestedMove) {
+    int start = requestedMove.getStart();
+    int destination = requestedMove.getDestination();
+    int flags = requestedMove.getFlags();
+
     std::array<int, 64> newState = state;
     std::array<uint64_t, 15> newBitboards = bitboards;
     int newCastlingRights = castlingRights;
@@ -676,90 +599,99 @@ Board Board::makeMove(Move passedInMove) {
 
     if (requestedMove.isCapture()) {
         // Check if en passant or normal capture
-        if (requestedMove.getFlags() == 5) {
+        if (flags == 5) {
             int offset = isWhiteTurn ? -8 : 8;
-            int pieceTaken = state[requestedMove.getDestination() + offset];
-            newBitboards[pieceTaken] -= 1ULL << (requestedMove.getDestination() + offset);
-            newBitboards[8 - colourValue] -= 1ULL << (requestedMove.getDestination() + offset);
-            newState[requestedMove.getDestination() + offset] = 0;
+            int pieceTaken = state[destination + offset];
+            newBitboards[pieceTaken] -= 1ULL << (destination + offset);
+            newBitboards[8 - colourValue] -= 1ULL << (destination + offset);
+            newState[destination + offset] = 0;
         } else {
-            int pieceTaken = state[requestedMove.getDestination()];
-            newBitboards[pieceTaken] -= 1ULL << requestedMove.getDestination();
-            newBitboards[8 - colourValue] -= 1ULL << requestedMove.getDestination();
+            int pieceTaken = state[destination];
+            newBitboards[pieceTaken] -= 1ULL << destination;
+            newBitboards[8 - colourValue] -= 1ULL << destination;
         }
     }
 
     // Double pawn push
-    if (requestedMove.getFlags() == 1) {
+    if (flags == 1) {
         int offset = isWhiteTurn ? -8 : 8;
-        newEnPassantSquare = requestedMove.getDestination() + offset;
+        newEnPassantSquare = destination + offset;
     }
 
     // Kingside castle
-    if (requestedMove.getFlags() == 2) {
+    if (flags == 2) {
         newCastlingRights = isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
-        newBitboards[colourValue + 4] -= 1ULL << (requestedMove.getStart() + 3);
-        newBitboards[colourValue + 4] += 1ULL << (requestedMove.getStart() + 1);
-        newBitboards[colourValue] -= 1ULL << (requestedMove.getStart() + 3);
-        newBitboards[colourValue] += 1ULL << (requestedMove.getStart() + 1);
-        newState[requestedMove.getStart() + 3] = 0;
-        newState[requestedMove.getStart() + 1] = colourValue + 4;
+        newBitboards[colourValue + 4] -= 1ULL << (start + 3);
+        newBitboards[colourValue + 4] += 1ULL << (start + 1);
+        newBitboards[colourValue] -= 1ULL << (start + 3);
+        newBitboards[colourValue] += 1ULL << (start + 1);
+        newState[start + 3] = 0;
+        newState[start + 1] = colourValue + 4;
     }
 
     // Queenside castle
-    if (requestedMove.getFlags() == 3) {
+    if (flags == 3) {
         newCastlingRights = isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
-        newBitboards[colourValue + 4] -= 1ULL << (requestedMove.getStart() - 4);
-        newBitboards[colourValue + 4] += 1ULL << (requestedMove.getStart() - 1);
-        newBitboards[colourValue] -= 1ULL << (requestedMove.getStart() - 4);
-        newBitboards[colourValue] += 1ULL << (requestedMove.getStart() - 1);
-        newState[requestedMove.getStart() - 4] = 0;
-        newState[requestedMove.getStart() - 1] = colourValue + 4;
+        newBitboards[colourValue + 4] -= 1ULL << (start - 4);
+        newBitboards[colourValue + 4] += 1ULL << (start - 1);
+        newBitboards[colourValue] -= 1ULL << (start - 4);
+        newBitboards[colourValue] += 1ULL << (start - 1);
+        newState[start - 4] = 0;
+        newState[start - 1] = colourValue + 4;
     }
 
-    int pieceMoved = state[requestedMove.getStart()];
-    newBitboards[pieceMoved] -= 1ULL << requestedMove.getStart();
-    newBitboards[colourValue] -= 1ULL << requestedMove.getStart();
-    newBitboards[colourValue] += 1ULL << requestedMove.getDestination();
-    newState[requestedMove.getStart()] = 0;
+    int pieceMoved = state[start];
+    newBitboards[pieceMoved] -= 1ULL << start;
+    newBitboards[colourValue] -= 1ULL << start;
+    newBitboards[colourValue] += 1ULL << destination;
+    newState[start] = 0;
 
     if (requestedMove.isPromotion()) {
-        int newPiece = (requestedMove.getFlags() & 3) + colourValue + 2;
-        newBitboards[newPiece] += 1ULL << requestedMove.getDestination();
-        newState[requestedMove.getDestination()] = newPiece;
+        int newPiece = (flags & 3) + colourValue + 2;
+        newBitboards[newPiece] += 1ULL << destination;
+        newState[destination] = newPiece;
     } else {
-        newBitboards[pieceMoved] += 1ULL << requestedMove.getDestination();
-        newState[requestedMove.getDestination()] = pieceMoved;
+        newBitboards[pieceMoved] += 1ULL << destination;
+        newState[destination] = pieceMoved;
     }
 
     // Update castling rights
     if (isWhiteTurn) {
-        if (requestedMove.getStart() == 0) {
+        if (start == 0) {
             newCastlingRights &= 11;
-        } else if (requestedMove.getStart() == 4) {
+        } else if (start == 4) {
             newCastlingRights &= 3;
-        } else if (requestedMove.getStart() == 7) {
+        } else if (start == 7) {
             newCastlingRights &= 7;
-        } else if (requestedMove.getDestination() == 56) {
+        } else if (destination == 56) {
             newCastlingRights &= 14;
-        } else if (requestedMove.getDestination() == 63) {
+        } else if (destination == 63) {
             newCastlingRights &= 13;
         }
     } else {
-        if (requestedMove.getStart() == 56) {
+        if (start == 56) {
             newCastlingRights &= 14;
-        } else if (requestedMove.getStart() == 60) {
+        } else if (start == 60) {
             newCastlingRights &= 12;
-        } else if (requestedMove.getStart() == 63) {
+        } else if (start == 63) {
             newCastlingRights &= 13;
-        } else if (requestedMove.getDestination() == 0) {
+        } else if (destination == 0) {
             newCastlingRights &= 11;
-        } else if (requestedMove.getDestination() == 7) {
+        } else if (destination == 7) {
             newCastlingRights &= 7;
         }
     }
 
     return Board(newState, newBitboards, !isWhiteTurn, newCastlingRights, newEnPassantSquare);
+}
+
+int Board::calculateFlag(int startSquare, int destinationSquare) {
+    for (Move move : moves) {
+        if (startSquare == move.getStart() && destinationSquare == move.getDestination()) {
+            return move.getFlags();
+        }
+    }
+    return 0;
 }
 
 std::set<int> Board::getMoveOptions(int startSquare) {

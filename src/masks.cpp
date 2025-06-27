@@ -112,10 +112,10 @@ std::array<uint64_t, 64> calculateKingMasks() {
     return kingMask;
 }
 
-std::array<std::array<int, 8>, 64> numSquaresToEdge = calculateNumSquaresToEdge();
-std::array<uint64_t, 64> knightMoveMasks = calculateKnightMasks();
-std::array<uint64_t, 64> bishopMoveMasks = calculateBishopMasks();
-std::array<uint64_t, 64> rookMoveMasks = calculateRookMasks();
-std::array<uint64_t, 64> kingMoveMasks = calculateKingMasks();
+const std::array<std::array<int, 8>, 64> numSquaresToEdge = calculateNumSquaresToEdge();
+const std::array<uint64_t, 64> knightMoveMasks = calculateKnightMasks();
+const std::array<uint64_t, 64> bishopMoveMasks = calculateBishopMasks();
+const std::array<uint64_t, 64> rookMoveMasks = calculateRookMasks();
+const std::array<uint64_t, 64> kingMoveMasks = calculateKingMasks();
 
 } // namespace masks

@@ -14,6 +14,12 @@ add_executable(${PROJECT_NAME}
   src/board.cpp
   src/move.cpp
   src/masks.cpp
+  src/magics.cpp
+)
+
+add_executable(generate_magics
+    src/generate_magics.cpp
+    src/magics.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}

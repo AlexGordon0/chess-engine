@@ -27,6 +27,7 @@ class Board {
           int enPassantSquare);
 
     Board makeMove(Move move);
+    int calculateFlag(int startSquare, int destinationSquare);
 
     std::set<int> getMoveOptions(int startSquare);
     std::array<int, 64> getState();
@@ -69,7 +70,7 @@ class Board {
     /* 0 = no check
      * 1 = check
      * 2 = double check */
-    int checkStatus;
+    int numChecks;
     uint64_t opponentAttackMap;
     uint64_t checkEvasionMask;
     uint64_t pinnedPieces;
@@ -79,9 +80,8 @@ class Board {
     void determineCheckStatus();
     uint64_t generatePawnAttackMaps();
     uint64_t generateKnightAttackMaps();
-    uint64_t generateBishopAttackMaps();
-    uint64_t generateRookAttackMaps();
-    uint64_t generateQueenAttackMaps();
+    uint64_t generateSlidingAttackMaps();
+    void calculateBlockMask(int pieceSquare, int kingSquare, bool isBishop);
     uint64_t generateKingAttackMaps();
 
     void calculatePinnedPieces();
@@ -91,6 +91,7 @@ class Board {
     void generateLegalMoves();
     void generatePawnMoves();
     void generateKnightMoves();
+    void addSlidingMoves(uint64_t possibleMoves, int startSquare);
     void generateSlidingMoves();
     void generateKingMoves();
     void addMovesFromBitmap(uint64_t bitmap, int startSquareOffset);
