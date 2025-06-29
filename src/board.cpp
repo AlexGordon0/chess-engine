@@ -585,10 +585,10 @@ void Board::generateKingMoves() {
     }
 }
 
-Board Board::makeMove(Move requestedMove) {
-    int start = requestedMove.getStart();
-    int destination = requestedMove.getDestination();
-    int flags = requestedMove.getFlags();
+Board Board::makeMove(Move move) {
+    int start = move.getStart();
+    int destination = move.getDestination();
+    int flags = move.getFlags();
 
     std::array<int, 64> newState = state;
     std::array<uint64_t, 15> newBitboards = bitboards;
@@ -597,7 +597,7 @@ Board Board::makeMove(Move requestedMove) {
 
     int colourValue = isWhiteTurn ? 0 : 8;
 
-    if (requestedMove.isCapture()) {
+    if (move.isCapture()) {
         // Check if en passant or normal capture
         if (flags == 5) {
             int offset = isWhiteTurn ? -8 : 8;
@@ -646,7 +646,7 @@ Board Board::makeMove(Move requestedMove) {
     newBitboards[colourValue] += 1ULL << destination;
     newState[start] = 0;
 
-    if (requestedMove.isPromotion()) {
+    if (move.isPromotion()) {
         int newPiece = (flags & 3) + colourValue + 2;
         newBitboards[newPiece] += 1ULL << destination;
         newState[destination] = newPiece;
