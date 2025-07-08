@@ -1,3 +1,6 @@
+#ifndef MASKS_H
+#define MASKS_H
+
 #include <array>
 #include <cstdint>
 
@@ -16,3 +19,5 @@ extern const std::array<uint64_t, 64> rookMoveMasks;
 extern const std::array<uint64_t, 64> kingMoveMasks;
 
 } // namespace masks
+
+#endif

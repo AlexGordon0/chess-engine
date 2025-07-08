@@ -1,3 +1,6 @@
+#ifndef MAGICS_H
+#define MAGICS_H
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -21,3 +24,5 @@ extern const std::vector<std::vector<uint64_t>> bishopLookupTable;
 extern const std::vector<std::vector<uint64_t>> rookLookupTable;
 
 }
+
+#endif

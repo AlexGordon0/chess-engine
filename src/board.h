@@ -1,3 +1,6 @@
+#ifndef BOARD_H
+#define BOARD_H
+
 #include <array>
 #include <cstdint>
 #include <iostream>
@@ -32,9 +35,11 @@ class Board {
     std::set<int> getMoveOptions(int startSquare);
     std::array<int, 64> getState();
     std::vector<Move> getMoves();
+    uint64_t getBitboard(int index);
     int getEnPassantSquare();
     bool getIsWhiteTurn();
     uint64_t getOpponentAttackMap();
+    int getGameStatus();
 
     void printBoard();
     void printBitboard(uint64_t bitboard);
@@ -66,6 +71,11 @@ class Board {
     int castlingRights;
     int enPassantSquare;
     std::vector<Move> moves;
+    /* 0 = game continues
+     * 1 = checkmate
+     * 2 = stalemate
+     * 3 = 50 move rule */
+    int gameStatus;
 
     /* 0 = no check
      * 1 = check
@@ -76,6 +86,7 @@ class Board {
     uint64_t pinnedPieces;
 
     void convertFromFen(std::string fenString);
+    void setup();
 
     void determineCheckStatus();
     uint64_t generatePawnAttackMaps();
@@ -97,3 +108,5 @@ class Board {
     void addMovesFromBitmap(uint64_t bitmap, int startSquareOffset);
     bool checkEnPassantPin(int startSquare);
 };
+
+#endif

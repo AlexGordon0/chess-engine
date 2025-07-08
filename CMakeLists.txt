@@ -15,6 +15,8 @@ add_executable(${PROJECT_NAME}
   src/move.cpp
   src/masks.cpp
   src/magics.cpp
+  src/search.cpp
+  src/evaluate.cpp
 )
 
 add_executable(generate_magics

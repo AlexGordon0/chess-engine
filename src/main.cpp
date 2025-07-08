@@ -1,4 +1,5 @@
 #include "board.h"
+#include "search.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <array>
@@ -14,6 +15,11 @@ const std::array<std::string, 64> squareNotation = {
     "a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3", "a4", "b4", "c4", "d4", "e4", "f4", "g4", "h4",
     "a5", "b5", "c5", "d5", "e5", "f5", "g5", "h5", "a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6",
     "a7", "b7", "c7", "d7", "e7", "f7", "g7", "h7", "a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8",
+};
+
+struct BotSettings {
+    bool enabled;
+    bool AIControlsWhite;
 };
 
 class PromotionMenu {
@@ -116,6 +122,9 @@ int main(int argc, char *argv[]) {
 
     std::string startingPos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";
     int plyDepth = -1;
+
+    BotSettings botSettings = {false, false};
+
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-b")) {
             i++;
@@ -123,6 +132,15 @@ int main(int argc, char *argv[]) {
         } else if (!strcmp(argv[i], "-p")) {
             i++;
             plyDepth = atoi(argv[i]);
+        } else if (!strcmp(argv[i], "-c")) {
+            i++;
+            botSettings.enabled = true;
+            if (!strcmp(argv[i], "w")) {
+                botSettings.AIControlsWhite = true;
+            } else if (strcmp(argv[i], "b")) {
+                std::cout << "Invalid usage" << '\n';
+                return 1;
+            }
         } else {
             std::cout << "Invalid usage" << '\n';
             return 1;
@@ -186,7 +204,9 @@ int main(int argc, char *argv[]) {
             if (event.type == SDL_QUIT) {
                 running = false;
             }
-            if (event.type == SDL_MOUSEBUTTONDOWN) {
+            if (event.type == SDL_MOUSEBUTTONDOWN && !board.getGameStatus() &&
+                (botSettings.enabled && board.getIsWhiteTurn() != botSettings.AIControlsWhite ||
+                 !botSettings.enabled)) {
                 if (promotionMenu.display) {
                     if (promotionMenu.isClicked(event.button.x, event.button.y)) {
                         int column = (event.button.x - promotionMenu.x) / (SQUARE_SIZE * 2);
@@ -251,6 +271,12 @@ int main(int argc, char *argv[]) {
 
         SDL_RenderPresent(renderer);
         SDL_Delay(20);
+
+        if (botSettings.enabled && botSettings.AIControlsWhite == board.getIsWhiteTurn() && !board.getGameStatus()) {
+            Move bestMove = search::getBestMove(board);
+            board = board.makeMove(bestMove);
+        }
+
     }
 
     for (int i = 0; i < 14; i++) {
