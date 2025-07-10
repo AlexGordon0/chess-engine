@@ -13,12 +13,14 @@ Board::Board(std::string startingPos) {
 }
 
 Board::Board(std::array<int, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, int _castlingRights,
-             int _enPassantSquare) {
+             int _enPassantSquare, int _halfMoves, int _fullMoves) {
     state = _state;
     bitboards = _bitboards;
     isWhiteTurn = _whiteTurn;
     castlingRights = _castlingRights;
     enPassantSquare = _enPassantSquare;
+    fullMoves = _fullMoves;
+    halfMoves = _halfMoves;
     setup();
 }
 
@@ -27,16 +29,20 @@ void Board::setup() {
     determineCheckStatus();
     calculatePinnedPieces();
     generateLegalMoves();
-    std::sort(moves.begin(), moves.end());
+    std::sort(moves.begin(), moves.end(), std::greater<>());
     gameStatus = 0;
     if (moves.size() == 0) {
         if (numChecks) {
             // Checkmate
             gameStatus = 1;
         } else {
-            // Stalemate
+            // Draw
             gameStatus = 2;
         }
+    }
+    if (halfMoves >= 100) {
+        // 50 move rule
+        gameStatus = 2;
     }
 }
 
@@ -111,6 +117,10 @@ void Board::convertFromFen(std::string fenString) {
     if (segments[3].length() == 2) {
         enPassantSquare = (segments[3][1] - '0' - 1) * 8 + (segments[3][0] - 97);
     }
+
+    halfMoves = segments[4][0] - '0';
+
+    fullMoves = segments[5][0] - '0';
 }
 
 void Board::determineCheckStatus() {
@@ -611,10 +621,20 @@ Board Board::makeMove(Move move) {
     std::array<uint64_t, 15> newBitboards = bitboards;
     int newCastlingRights = castlingRights;
     int newEnPassantSquare = -1;
+    int newHalfMoves = halfMoves + 1;
+    int newFullMoves = fullMoves;
+    if (!isWhiteTurn) {
+        newFullMoves++;
+    }
 
     int colourValue = isWhiteTurn ? 0 : 8;
 
+    if (state[start] == 1 || state[start] == 9) {
+        halfMoves = 0;
+    }
+
     if (move.isCapture()) {
+        newHalfMoves = 0;
         // Check if en passant or normal capture
         if (flags == 5) {
             int offset = isWhiteTurn ? -8 : 8;
@@ -699,7 +719,7 @@ Board Board::makeMove(Move move) {
         }
     }
 
-    return Board(newState, newBitboards, !isWhiteTurn, newCastlingRights, newEnPassantSquare);
+    return Board(newState, newBitboards, !isWhiteTurn, newCastlingRights, newEnPassantSquare, newHalfMoves, newFullMoves);
 }
 
 int Board::calculateFlag(int startSquare, int destinationSquare) {
@@ -754,6 +774,6 @@ void Board::printBitboard(uint64_t bitboard) {
 
 void Board::printMoves() {
     for (Move move : moves) {
-        std::cout << move.getStart() << ", " << move.getDestination() << '\n';
+        std::cout << move.getFlags() << ", " << move.getStart() << ", " << move.getDestination() << '\n';
     }
 }

@@ -26,8 +26,8 @@ class Move {
 class Board {
   public:
     Board(std::string startingPos);
-    Board(std::array<int, 64> state, std::array<uint64_t, 15> bitboards, bool whiteTurn, int castlingRights,
-          int enPassantSquare);
+    Board(std::array<int, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, int _castlingRights,
+                 int _enPassantSquare, int _halfMoves, int _fullMoves);
 
     Board makeMove(Move move);
     int calculateFlag(int startSquare, int destinationSquare);
@@ -70,16 +70,14 @@ class Board {
     bool isWhiteTurn;
     int castlingRights;
     int enPassantSquare;
+    int fullMoves;
+    int halfMoves;
     std::vector<Move> moves;
-    /* 0 = game continues
+    /* 0 = game not ended
      * 1 = checkmate
-     * 2 = stalemate
-     * 3 = 50 move rule */
+     * 2 = draw */
     int gameStatus;
 
-    /* 0 = no check
-     * 1 = check
-     * 2 = double check */
     int numChecks;
     uint64_t opponentAttackMap;
     uint64_t checkEvasionMask;
