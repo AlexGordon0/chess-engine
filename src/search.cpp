@@ -21,7 +21,7 @@ int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove) {
             return evaluate::evaluatePosition(board);
         } else {
             // return evaluate::evaluatePosition(board);
-            return qSearch(board, depth, alpha, beta);
+            return qSearch(board, alpha, beta);
         }
     }
     int value = -1000000000;
