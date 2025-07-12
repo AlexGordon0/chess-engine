@@ -37,10 +37,10 @@ const int pieceSquareTables[6][64] = {
      -20, -20, -20, -10, 20,  20,  0,   0,   0,   0,   20,  20,  20,  30,  10,  0,   0,   10,  30,  20}};
 
 int sumPieceValues(Board board, bool isWhitePieces) {
-    const int pieceValues[5] = {100, 300, 320, 500, 900};
+    const int pieceValues[6] = {100, 300, 320, 500, 900, 10000};
     int colourValue = isWhitePieces ? 0 : 8;
     int total = 0;
-    for (int i = 1; i < 6; i++) {
+    for (int i = 1; i < 7; i++) {
         uint64_t bitboardCopy = board.getBitboard(colourValue + i);
         while (bitboardCopy) {
             int pieceSquare = std::countr_zero(bitboardCopy);
@@ -56,10 +56,10 @@ int sumPieceValues(Board board, bool isWhitePieces) {
     return total;
 }
 
-int evaluatePosition(Board board) {
+int evaluatePosition(Board board, int depth) {
     int colourMultiplier = board.getIsWhiteTurn() ? 1 : -1;
     if (board.getGameStatus() == 1) {
-        return -1000000;
+        return -10000000 - depth;
     }
     if (board.getGameStatus() == 2) {
         return 0;

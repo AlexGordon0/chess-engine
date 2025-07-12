@@ -6,7 +6,7 @@
 namespace evaluate {
 
 int sumPieceValues(Board board, bool isWhitePieces);
-int evaluatePosition(Board board);
+int evaluatePosition(Board board, int depth = 0);
 
 }
 

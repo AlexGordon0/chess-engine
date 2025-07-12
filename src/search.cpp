@@ -13,25 +13,24 @@ Move getBestMove(Board board) {
 }
 
 int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove) {
-    if (board.getMoves().size() == 0) {
-        return evaluate::evaluatePosition(board);
+    if (board.getMoves().size() == 0 || board.getGameStatus()) {
+        return evaluate::evaluatePosition(board, depth);
     }
     if (depth <= 0) {
         if (!board.getMoves()[0].isCapture() && !board.getMoves()[0].isPromotion()) {
             return evaluate::evaluatePosition(board);
         } else {
             // return evaluate::evaluatePosition(board);
-            return qSearch(board, alpha, beta);
+            return qSearch(board, depth, alpha, beta);
         }
     }
     int value = -1000000000;
     for (Move move : board.getMoves()) {
         int newValue = -negamax(board.makeMove(move), depth - 1, -beta, -alpha, false);
-        /*
         if (updateBestMove) {
-            std::cout << 5 - depth << ": " << move.getStart() << ", " << move.getDestination() << ": " << newValue << '\n';
+            /* std::cout << 7 - depth << ": " << move.getStart() << ", " << move.getDestination() << ": " << newValue
+                      << '\n'; */
         }
-        */
         if (newValue > value) {
             value = newValue;
             if (updateBestMove) {
@@ -46,8 +45,8 @@ int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove) {
     return value;
 }
 
-int qSearch(Board board, int alpha, int beta) {
-    int bestValue = evaluate::evaluatePosition(board);
+int qSearch(Board board, int depth, int alpha, int beta) {
+    int bestValue = evaluate::evaluatePosition(board, depth);
     if (bestValue >= beta) {
         return bestValue;
     }
@@ -57,7 +56,7 @@ int qSearch(Board board, int alpha, int beta) {
         if (!move.isPromotion() && !move.isCapture()) {
             break;
         }
-        int value = -qSearch(board.makeMove(move), -beta, -alpha);
+        int value = -qSearch(board.makeMove(move), depth - 1, -beta, -alpha);
         if (value >= beta) {
             return value;
         }

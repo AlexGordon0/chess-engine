@@ -26,27 +26,27 @@ class Move {
 class Board {
   public:
     Board(std::string startingPos);
-    Board(std::array<int, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, int _castlingRights,
-                 int _enPassantSquare, int _halfMoves, int _fullMoves);
+    Board(std::array<short, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, short _castlingRights,
+          short _enPassantSquare, short _halfMoves, short _fullMoves, std::vector<uint64_t> _zobristHashes);
 
     Board makeMove(Move move);
     int calculateFlag(int startSquare, int destinationSquare);
 
     std::set<int> getMoveOptions(int startSquare);
-    std::array<int, 64> getState();
+    std::array<short, 64> getState();
     std::vector<Move> getMoves();
     uint64_t getBitboard(int index);
-    int getEnPassantSquare();
+    short getEnPassantSquare();
     bool getIsWhiteTurn();
     uint64_t getOpponentAttackMap();
-    int getGameStatus();
+    short getGameStatus();
 
     void printBoard();
     void printBitboard(uint64_t bitboard);
     void printMoves();
 
   private:
-    std::array<int, 64> state = {0};
+    std::array<short, 64> state = {0};
 
     /* Bitboards indexes are:
      *  0 - White pieces
@@ -68,23 +68,26 @@ class Board {
     std::array<uint64_t, 15> bitboards = {0};
 
     bool isWhiteTurn;
-    int castlingRights;
-    int enPassantSquare;
-    int fullMoves;
-    int halfMoves;
+    short castlingRights;
+    short enPassantSquare;
+    short fullMoves;
+    short halfMoves;
+    std::vector<uint64_t> zobristHashes;
     std::vector<Move> moves;
     /* 0 = game not ended
      * 1 = checkmate
      * 2 = draw */
-    int gameStatus;
+    short gameStatus;
 
-    int numChecks;
+    short numChecks;
+    uint64_t currentPositionHash;
     uint64_t opponentAttackMap;
     uint64_t checkEvasionMask;
     uint64_t pinnedPieces;
 
     void convertFromFen(std::string fenString);
     void setup();
+    uint64_t zobrist();
 
     void determineCheckStatus();
     uint64_t generatePawnAttackMaps();

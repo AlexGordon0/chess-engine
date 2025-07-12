@@ -23,6 +23,8 @@ extern const std::array<uint64_t, 64> rookMagics;
 extern const std::vector<std::vector<uint64_t>> bishopLookupTable;
 extern const std::vector<std::vector<uint64_t>> rookLookupTable;
 
+extern const std::array<uint64_t, 793> zobristKeys;
+
 }
 
 #endif

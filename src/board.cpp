@@ -12,8 +12,8 @@ Board::Board(std::string startingPos) {
     setup();
 }
 
-Board::Board(std::array<int, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, int _castlingRights,
-             int _enPassantSquare, int _halfMoves, int _fullMoves) {
+Board::Board(std::array<short, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, short _castlingRights,
+             short _enPassantSquare, short _halfMoves, short _fullMoves, std::vector<uint64_t> _zobristHashes) {
     state = _state;
     bitboards = _bitboards;
     isWhiteTurn = _whiteTurn;
@@ -21,6 +21,7 @@ Board::Board(std::array<int, 64> _state, std::array<uint64_t, 15> _bitboards, bo
     enPassantSquare = _enPassantSquare;
     fullMoves = _fullMoves;
     halfMoves = _halfMoves;
+    zobristHashes = _zobristHashes;
     setup();
 }
 
@@ -40,25 +41,37 @@ void Board::setup() {
             gameStatus = 2;
         }
     }
+    // 50 move rule
     if (halfMoves >= 100) {
-        // 50 move rule
+        gameStatus = 2;
+    }
+
+    // Three move repetition
+    int repetitions = 0;
+    currentPositionHash = zobrist();
+    for (int i = 0; i < zobristHashes.size(); i++) {
+        if (zobristHashes[i] == currentPositionHash) {
+            repetitions++;
+        }
+    }
+    if (repetitions >= 2) {
         gameStatus = 2;
     }
 }
 
-std::array<int, 64> Board::getState() { return state; }
+std::array<short, 64> Board::getState() { return state; }
 
 std::vector<Move> Board::getMoves() { return moves; }
 
 uint64_t Board::getBitboard(int index) { return bitboards[index]; }
 
-int Board::getEnPassantSquare() { return enPassantSquare; }
+short Board::getEnPassantSquare() { return enPassantSquare; }
 
 bool Board::getIsWhiteTurn() { return isWhiteTurn; }
 
 uint64_t Board::getOpponentAttackMap() { return opponentAttackMap; }
 
-int Board::getGameStatus() { return gameStatus; }
+short Board::getGameStatus() { return gameStatus; }
 
 void Board::convertFromFen(std::string fenString) {
     std::map<char, int> pieceLetterToPieceNum = {{'p', 1}, {'n', 2}, {'b', 3}, {'r', 4}, {'q', 5}, {'k', 6}};
@@ -121,6 +134,25 @@ void Board::convertFromFen(std::string fenString) {
     halfMoves = segments[4][0] - '0';
 
     fullMoves = segments[5][0] - '0';
+}
+
+uint64_t Board::zobrist() {
+    uint64_t hash = 0;
+    for (int i = 0; i < 64; i++) {
+        int piece = state[i];
+        if (piece) {
+            hash ^= magics::zobristKeys[(piece - 1 - (piece / 8) * 2) * 64 + i];
+        }
+    }
+    if (!isWhiteTurn) {
+        hash ^= magics::zobristKeys[768];
+    }
+    hash ^= magics::zobristKeys[769 + castlingRights];
+    if (enPassantSquare != -1) {
+        int enPassantFile = enPassantSquare & 7;
+        hash ^= magics::zobristKeys[785 + enPassantFile];
+    }
+    return hash;
 }
 
 void Board::determineCheckStatus() {
@@ -617,12 +649,14 @@ Board Board::makeMove(Move move) {
     int destination = move.getDestination();
     int flags = move.getFlags();
 
-    std::array<int, 64> newState = state;
+    std::array<short, 64> newState = state;
     std::array<uint64_t, 15> newBitboards = bitboards;
-    int newCastlingRights = castlingRights;
-    int newEnPassantSquare = -1;
-    int newHalfMoves = halfMoves + 1;
-    int newFullMoves = fullMoves;
+    short newCastlingRights = castlingRights;
+    short newEnPassantSquare = -1;
+    short newHalfMoves = halfMoves + 1;
+    short newFullMoves = fullMoves;
+    std::vector<uint64_t> newZobristHashes;
+
     if (!isWhiteTurn) {
         newFullMoves++;
     }
@@ -630,7 +664,7 @@ Board Board::makeMove(Move move) {
     int colourValue = isWhiteTurn ? 0 : 8;
 
     if (state[start] == 1 || state[start] == 9) {
-        halfMoves = 0;
+        newHalfMoves = 0;
     }
 
     if (move.isCapture()) {
@@ -719,7 +753,14 @@ Board Board::makeMove(Move move) {
         }
     }
 
-    return Board(newState, newBitboards, !isWhiteTurn, newCastlingRights, newEnPassantSquare, newHalfMoves, newFullMoves);
+    if (newHalfMoves) {
+        newZobristHashes = zobristHashes;
+    }
+
+    newZobristHashes.push_back(currentPositionHash);
+
+    return Board(newState, newBitboards, !isWhiteTurn, newCastlingRights, newEnPassantSquare, newHalfMoves,
+                 newFullMoves, newZobristHashes);
 }
 
 int Board::calculateFlag(int startSquare, int destinationSquare) {

@@ -7,7 +7,7 @@ namespace search {
 
 Move getBestMove(Board board);
 int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove = true);
-int qSearch(Board board, int alpha, int beta);
+int qSearch(Board board, int depth, int alpha, int beta);
 
 }
 

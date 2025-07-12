@@ -1,5 +1,5 @@
 #include "magics.h"
-#include <cstdint>
+#include <random>
 
 namespace magics {
 
@@ -192,5 +192,17 @@ std::vector<std::vector<uint64_t>> calculateLookupTable(bool isBishop) {
 
 const std::vector<std::vector<uint64_t>> bishopLookupTable = calculateLookupTable(true);
 const std::vector<std::vector<uint64_t>> rookLookupTable = calculateLookupTable(false);
+
+std::array<uint64_t, 793> generateZobristKeys() {
+    std::array<uint64_t, 793> keys = {};
+    for (int i = 0; i < 793; i++) {
+        uint64_t num1 = random();
+        uint64_t num2 = random();
+        keys[i] = num1 << 32 | num2;
+    }
+    return keys;
+}
+
+const std::array<uint64_t, 793> zobristKeys = generateZobristKeys();
 
 } // namespace magics
