@@ -22,6 +22,58 @@ struct BotSettings {
     bool AIControlsWhite;
 };
 
+class BoardManager {
+  public:
+    Board board;
+    std::string startingPos;
+    BotSettings botSettings;
+    BoardManager(std::string _startingPos, BotSettings _botSettings) : board(_startingPos), botSettings(_botSettings) {
+        startingPos = _startingPos;
+    }
+
+    void perftTimer(int plyDepth) {
+        for (int i = 0; i <= plyDepth; i++) {
+            board = Board(startingPos);
+            std::chrono::duration start = std::chrono::high_resolution_clock().now().time_since_epoch();
+            int startMs = std::chrono::duration_cast<std::chrono::microseconds>(start).count();
+
+            int moves = perft(i);
+
+            std::chrono::duration end = std::chrono::high_resolution_clock().now().time_since_epoch();
+            int endMs = std::chrono::duration_cast<std::chrono::microseconds>(end).count();
+            double timeElapsed = endMs - startMs;
+            double nps = 0;
+            if (timeElapsed) {
+                nps = (double)moves / timeElapsed * 1000000;
+            }
+
+            std::cout << i << ": " << moves << " " << timeElapsed / 1000 << "ms @ " << nps << "n/s" << '\n';
+        }
+    }
+
+  private:
+    int perft(int depth, bool topLevel = true) {
+        if (depth == 0) {
+            return 1;
+        }
+        int totalMoves = 0;
+        std::vector<Move> moves = board.getMoves();
+        for (Move move : moves) {
+            board.makeMove(move);
+            int numMoves = perft(depth - 1, false);
+            board.unmakeMove(move);
+            /*
+            if (topLevel) {
+                std::cout << squareNotation[move.getStart()] << "->" << squareNotation[move.getDestination()] << ", "
+                          << move.getFlags() << ": " << numMoves << '\n';
+            }
+            */
+            totalMoves += numMoves;
+        }
+        return totalMoves;
+    }
+};
+
 class PromotionMenu {
   public:
     int x, y;
@@ -102,27 +154,10 @@ void drawOpponentAttackMap(SDL_Renderer *renderer, uint64_t opponentAttackMap) {
     }
 }
 
-int perft(Board board, int depth, bool topLevel = true) {
-    if (depth == 0) {
-        return 1;
-    }
-    int totalMoves = 0;
-    for (Move move : board.getMoves()) {
-        int numMoves = perft(board.makeMove(move), depth - 1, false);
-        // if (topLevel) {
-        //     std::cout << squareNotation[move.getStart()] << "->" << squareNotation[move.getDestination()] << ", "
-        //               << move.getFlags() << ": " << numMoves << '\n';
-        // }
-        totalMoves += numMoves;
-    }
-    return totalMoves;
-}
-
 int main(int argc, char *argv[]) {
 
     std::string startingPos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     int plyDepth = -1;
-
     BotSettings botSettings = {false, false};
 
     for (int i = 1; i < argc; i++) {
@@ -147,23 +182,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    BoardManager boardManager = BoardManager(startingPos, botSettings);
+
     if (plyDepth >= 0) {
-        for (int i = 0; i <= plyDepth; i++) {
-            std::chrono::duration start = std::chrono::high_resolution_clock().now().time_since_epoch();
-            int startMs = std::chrono::duration_cast<std::chrono::microseconds>(start).count();
-
-            int moves = perft(Board(startingPos), i);
-
-            std::chrono::duration end = std::chrono::high_resolution_clock().now().time_since_epoch();
-            int endMs = std::chrono::duration_cast<std::chrono::microseconds>(end).count();
-            double timeElapsed = endMs - startMs;
-            double nps = 0;
-            if (timeElapsed) {
-                nps = (double)moves / timeElapsed * 1000000;
-            }
-
-            std::cout << i << ": " << moves << " " << timeElapsed / 1000 << "ms @ " << nps << "n/s" << '\n';
-        }
+        boardManager.perftTimer(plyDepth);
         return 0;
     }
 
@@ -189,7 +211,6 @@ int main(int argc, char *argv[]) {
     }
 
     PromotionMenu promotionMenu = PromotionMenu();
-    Board board = Board(startingPos);
 
     bool running = true;
     SDL_Event event;
@@ -204,8 +225,8 @@ int main(int argc, char *argv[]) {
             if (event.type == SDL_QUIT) {
                 running = false;
             }
-            if (event.type == SDL_MOUSEBUTTONDOWN && !board.getGameStatus() &&
-                (botSettings.enabled && board.getIsWhiteTurn() != botSettings.AIControlsWhite ||
+            if (event.type == SDL_MOUSEBUTTONDOWN && !boardManager.board.getGameStatus() &&
+                (botSettings.enabled && boardManager.board.getIsWhiteTurn() != botSettings.AIControlsWhite ||
                  !botSettings.enabled)) {
                 if (promotionMenu.display) {
                     if (promotionMenu.isClicked(event.button.x, event.button.y)) {
@@ -213,10 +234,10 @@ int main(int argc, char *argv[]) {
                         int row = (event.button.y - promotionMenu.y) / (SQUARE_SIZE * 2);
                         int flags = 8;
                         flags |= (row * 2 + column);
-                        if (board.getState()[squareClicked]) {
+                        if (boardManager.board.getState()[squareClicked]) {
                             flags |= 4;
                         }
-                        board = board.makeMove(Move(startSquare, squareClicked, flags));
+                        boardManager.board.makeMove(Move(startSquare, squareClicked, flags));
                         promotionMenu.display = false;
                         startSquare = -1;
                         moveOptions.clear();
@@ -226,23 +247,24 @@ int main(int argc, char *argv[]) {
                     int rank = 7 - event.button.y / SQUARE_SIZE;
                     squareClicked = rank * 8 + file;
                     if (startSquare == -1) {
-                        moveOptions = board.getMoveOptions(squareClicked);
+                        moveOptions = boardManager.board.getMoveOptions(squareClicked);
                         if (!moveOptions.empty()) {
                             startSquare = squareClicked;
                         }
                     } else if (startSquare >= 0) {
                         if (moveOptions.contains(squareClicked)) {
-                            if (board.getState()[startSquare] == 1 && squareClicked > 55 ||
-                                board.getState()[startSquare] == 9 && squareClicked < 8) {
+                            if (boardManager.board.getState()[startSquare] == 1 && squareClicked > 55 ||
+                                boardManager.board.getState()[startSquare] == 9 && squareClicked < 8) {
                                 promotionMenu.display = true;
                             } else {
-                                int flag = board.calculateFlag(startSquare, squareClicked);
-                                board = board.makeMove(Move(startSquare, squareClicked, flag));
+                                int flags = boardManager.board.calculateFlag(startSquare, squareClicked);
+                                boardManager.board.makeMove(Move(startSquare, squareClicked, flags));
+                                boardManager.board.unmakeMove(Move(startSquare, squareClicked, flags));
                                 startSquare = -1;
                                 moveOptions.clear();
                             }
                         } else {
-                            moveOptions = board.getMoveOptions(squareClicked);
+                            moveOptions = boardManager.board.getMoveOptions(squareClicked);
                             if (!moveOptions.empty() && startSquare != squareClicked) {
                                 startSquare = squareClicked;
                             } else {
@@ -263,20 +285,20 @@ int main(int argc, char *argv[]) {
         }
         // drawOpponentAttackMap(renderer, board.getOpponentAttackMap());
 
-        drawPieces(renderer, pieceTextures, board);
+        drawPieces(renderer, pieceTextures, boardManager.board);
 
         if (promotionMenu.display) {
-            promotionMenu.draw(renderer, pieceTextures, board.getIsWhiteTurn());
+            promotionMenu.draw(renderer, pieceTextures, boardManager.board.getIsWhiteTurn());
         }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(20);
 
-        if (botSettings.enabled && botSettings.AIControlsWhite == board.getIsWhiteTurn() && !board.getGameStatus()) {
-            Move bestMove = search::getBestMove(board);
-            board = board.makeMove(bestMove);
+        if (botSettings.enabled && botSettings.AIControlsWhite == boardManager.board.getIsWhiteTurn() &&
+            !boardManager.board.getGameStatus()) {
+            Move bestMove = search::getBestMove(boardManager.board);
+            boardManager.board.makeMove(bestMove);
         }
-
     }
 
     for (int i = 0; i < 14; i++) {

@@ -23,14 +23,20 @@ class Move {
     unsigned int move;
 };
 
+struct BoardData {
+    short castlingRights;
+    short enPassantSquare;
+    short halfMoves;
+    short capturedPiece;
+};
+
 class Board {
   public:
     Board(std::string startingPos);
-    Board(std::array<short, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, short _castlingRights,
-          short _enPassantSquare, short _halfMoves, short _fullMoves, std::vector<uint64_t> _zobristHashes);
 
-    Board makeMove(Move move);
     int calculateFlag(int startSquare, int destinationSquare);
+    void makeMove(Move move);
+    void unmakeMove(Move move);
 
     std::set<int> getMoveOptions(int startSquare);
     std::array<short, 64> getState();
@@ -70,8 +76,10 @@ class Board {
     bool isWhiteTurn;
     short castlingRights;
     short enPassantSquare;
-    short fullMoves;
     short halfMoves;
+    short fullMoves;
+    short ply;
+    short repetitionStart;
     std::vector<uint64_t> zobristHashes;
     std::vector<Move> moves;
     /* 0 = game not ended
@@ -88,6 +96,7 @@ class Board {
     void convertFromFen(std::string fenString);
     void setup();
     uint64_t zobrist();
+    std::vector<BoardData> gameHistory;
 
     void determineCheckStatus();
     uint64_t generatePawnAttackMaps();

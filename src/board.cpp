@@ -12,19 +12,6 @@ Board::Board(std::string startingPos) {
     setup();
 }
 
-Board::Board(std::array<short, 64> _state, std::array<uint64_t, 15> _bitboards, bool _whiteTurn, short _castlingRights,
-             short _enPassantSquare, short _halfMoves, short _fullMoves, std::vector<uint64_t> _zobristHashes) {
-    state = _state;
-    bitboards = _bitboards;
-    isWhiteTurn = _whiteTurn;
-    castlingRights = _castlingRights;
-    enPassantSquare = _enPassantSquare;
-    fullMoves = _fullMoves;
-    halfMoves = _halfMoves;
-    zobristHashes = _zobristHashes;
-    setup();
-}
-
 void Board::setup() {
     moves.reserve(40);
     determineCheckStatus();
@@ -32,6 +19,7 @@ void Board::setup() {
     generateLegalMoves();
     std::sort(moves.begin(), moves.end(), std::greater<>());
     gameStatus = 0;
+
     if (moves.size() == 0) {
         if (numChecks) {
             // Checkmate
@@ -48,8 +36,7 @@ void Board::setup() {
 
     // Three move repetition
     int repetitions = 0;
-    currentPositionHash = zobrist();
-    for (int i = 0; i < zobristHashes.size(); i++) {
+    for (int i = repetitionStart; i < zobristHashes.size(); i++) {
         if (zobristHashes[i] == currentPositionHash) {
             repetitions++;
         }
@@ -131,9 +118,11 @@ void Board::convertFromFen(std::string fenString) {
         enPassantSquare = (segments[3][1] - '0' - 1) * 8 + (segments[3][0] - 97);
     }
 
+    ply = 0;
+    repetitionStart = 0;
     halfMoves = segments[4][0] - '0';
-
     fullMoves = segments[5][0] - '0';
+    currentPositionHash = zobrist();
 }
 
 uint64_t Board::zobrist() {
@@ -644,86 +633,107 @@ void Board::generateKingMoves() {
     }
 }
 
-Board Board::makeMove(Move move) {
-    int start = move.getStart();
-    int destination = move.getDestination();
-    int flags = move.getFlags();
+void Board::makeMove(Move move) {
+    short start = move.getStart();
+    short destination = move.getDestination();
+    short flags = move.getFlags();
+    short pieceTaken = -1;
+    short oldHalfMoves = halfMoves;
 
-    std::array<short, 64> newState = state;
-    std::array<uint64_t, 15> newBitboards = bitboards;
-    short newCastlingRights = castlingRights;
-    short newEnPassantSquare = -1;
-    short newHalfMoves = halfMoves + 1;
-    short newFullMoves = fullMoves;
-    std::vector<uint64_t> newZobristHashes;
+    zobristHashes.push_back(currentPositionHash);
+    currentPositionHash ^= magics::zobristKeys[768];
+
+    if (enPassantSquare != -1) {
+        int enPassantFile = enPassantSquare & 7;
+        currentPositionHash ^= magics::zobristKeys[785 + enPassantFile];
+    }
+
+    int newCastlingRights = castlingRights;
+    ply++;
+    halfMoves++;
+    if (state[start] == 1 || state[start] == 9) {
+        halfMoves = 0;
+    }
 
     if (!isWhiteTurn) {
-        newFullMoves++;
+        fullMoves++;
     }
 
     int colourValue = isWhiteTurn ? 0 : 8;
 
-    if (state[start] == 1 || state[start] == 9) {
-        newHalfMoves = 0;
-    }
-
     if (move.isCapture()) {
-        newHalfMoves = 0;
+        halfMoves = 0;
         // Check if en passant or normal capture
         if (flags == 5) {
             int offset = isWhiteTurn ? -8 : 8;
-            int pieceTaken = state[destination + offset];
-            newBitboards[pieceTaken] -= 1ULL << (destination + offset);
-            newBitboards[8 - colourValue] -= 1ULL << (destination + offset);
-            newState[destination + offset] = 0;
+            pieceTaken = state[destination + offset];
+            currentPositionHash ^=
+                magics::zobristKeys[(pieceTaken - 1 - (pieceTaken / 8) * 2) * 64 + destination + offset];
+            bitboards[pieceTaken] -= 1ULL << (destination + offset);
+            bitboards[8 - colourValue] -= 1ULL << (destination + offset);
+            state[destination + offset] = 0;
         } else {
-            int pieceTaken = state[destination];
-            newBitboards[pieceTaken] -= 1ULL << destination;
-            newBitboards[8 - colourValue] -= 1ULL << destination;
+            pieceTaken = state[destination];
+            currentPositionHash ^= magics::zobristKeys[(pieceTaken - 1 - (pieceTaken / 8) * 2) * 64 + destination];
+            bitboards[pieceTaken] -= 1ULL << destination;
+            bitboards[8 - colourValue] -= 1ULL << destination;
         }
     }
+
+    gameHistory.push_back(BoardData(castlingRights, enPassantSquare, oldHalfMoves, pieceTaken));
 
     // Double pawn push
     if (flags == 1) {
         int offset = isWhiteTurn ? -8 : 8;
-        newEnPassantSquare = destination + offset;
+        enPassantSquare = destination + offset;
+        int enPassantFile = enPassantSquare & 7;
+        currentPositionHash ^= magics::zobristKeys[785 + enPassantFile];
+    } else {
+        enPassantSquare = -1;
     }
 
     // Kingside castle
     if (flags == 2) {
         newCastlingRights = isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
-        newBitboards[colourValue + 4] -= 1ULL << (start + 3);
-        newBitboards[colourValue + 4] += 1ULL << (start + 1);
-        newBitboards[colourValue] -= 1ULL << (start + 3);
-        newBitboards[colourValue] += 1ULL << (start + 1);
-        newState[start + 3] = 0;
-        newState[start + 1] = colourValue + 4;
+        bitboards[colourValue + 4] -= 1ULL << (start + 3);
+        bitboards[colourValue + 4] += 1ULL << (start + 1);
+        bitboards[colourValue] -= 1ULL << (start + 3);
+        bitboards[colourValue] += 1ULL << (start + 1);
+        state[start + 3] = 0;
+        state[start + 1] = colourValue + 4;
+        currentPositionHash ^= (magics::zobristKeys[(colourValue + 3 - (colourValue / 8) * 2) * 64 + start + 3] ^
+                                magics::zobristKeys[(colourValue + 3 - (colourValue / 8) * 2) * 64 + start + 1]);
     }
 
     // Queenside castle
     if (flags == 3) {
         newCastlingRights = isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
-        newBitboards[colourValue + 4] -= 1ULL << (start - 4);
-        newBitboards[colourValue + 4] += 1ULL << (start - 1);
-        newBitboards[colourValue] -= 1ULL << (start - 4);
-        newBitboards[colourValue] += 1ULL << (start - 1);
-        newState[start - 4] = 0;
-        newState[start - 1] = colourValue + 4;
+        bitboards[colourValue + 4] -= 1ULL << (start - 4);
+        bitboards[colourValue + 4] += 1ULL << (start - 1);
+        bitboards[colourValue] -= 1ULL << (start - 4);
+        bitboards[colourValue] += 1ULL << (start - 1);
+        state[start - 4] = 0;
+        state[start - 1] = colourValue + 4;
+        currentPositionHash ^= (magics::zobristKeys[((colourValue + 3) - (colourValue / 8) * 2) * 64 + start - 4] ^
+                                magics::zobristKeys[((colourValue + 3) - (colourValue / 8) * 2) * 64 + start - 1]);
     }
 
     int pieceMoved = state[start];
-    newBitboards[pieceMoved] -= 1ULL << start;
-    newBitboards[colourValue] -= 1ULL << start;
-    newBitboards[colourValue] += 1ULL << destination;
-    newState[start] = 0;
+    bitboards[pieceMoved] -= 1ULL << start;
+    bitboards[colourValue] -= 1ULL << start;
+    bitboards[colourValue] += 1ULL << destination;
+    state[start] = 0;
+    currentPositionHash ^= magics::zobristKeys[(pieceMoved - 1 - (pieceMoved / 8) * 2) * 64 + start];
 
     if (move.isPromotion()) {
         int newPiece = (flags & 3) + colourValue + 2;
-        newBitboards[newPiece] += 1ULL << destination;
-        newState[destination] = newPiece;
+        bitboards[newPiece] += 1ULL << destination;
+        state[destination] = newPiece;
+        currentPositionHash ^= magics::zobristKeys[(newPiece - 1 - (newPiece / 8) * 2) * 64 + destination];
     } else {
-        newBitboards[pieceMoved] += 1ULL << destination;
-        newState[destination] = pieceMoved;
+        bitboards[pieceMoved] += 1ULL << destination;
+        state[destination] = pieceMoved;
+        currentPositionHash ^= magics::zobristKeys[(pieceMoved - 1 - (pieceMoved / 8) * 2) * 64 + destination];
     }
 
     // Update castling rights
@@ -753,14 +763,97 @@ Board Board::makeMove(Move move) {
         }
     }
 
-    if (newHalfMoves) {
-        newZobristHashes = zobristHashes;
+    if (newCastlingRights != castlingRights) {
+        currentPositionHash ^= magics::zobristKeys[769 + castlingRights];
+        currentPositionHash ^= magics::zobristKeys[769 + newCastlingRights];
+        castlingRights = newCastlingRights;
     }
 
-    newZobristHashes.push_back(currentPositionHash);
+    if (!halfMoves) {
+        repetitionStart = ply;
+    }
 
-    return Board(newState, newBitboards, !isWhiteTurn, newCastlingRights, newEnPassantSquare, newHalfMoves,
-                 newFullMoves, newZobristHashes);
+    isWhiteTurn = !isWhiteTurn;
+
+    moves.clear();
+    setup();
+}
+
+void Board::unmakeMove(Move move) {
+    short start = move.getStart();
+    short destination = move.getDestination();
+    short flags = move.getFlags();
+
+    short colourValue = isWhiteTurn ? 8 : 0;
+
+    currentPositionHash = zobristHashes.back();
+    zobristHashes.pop_back();
+    ply--;
+    if (isWhiteTurn) {
+        fullMoves--;
+    }
+
+    castlingRights = gameHistory.back().castlingRights;
+    enPassantSquare = gameHistory.back().enPassantSquare;
+    halfMoves = gameHistory.back().halfMoves;
+
+    if (move.isPromotion()) {
+        short promotionPiece = state[destination];
+        bitboards[promotionPiece] -= 1ULL << destination;
+        bitboards[colourValue + 1] += 1ULL << start;
+        state[start] = colourValue + 1;
+    } else {
+        short pieceMoved = state[destination];
+        bitboards[pieceMoved] -= 1ULL << destination;
+        bitboards[pieceMoved] += 1ULL << start;
+        state[start] = pieceMoved;
+    }
+
+    bitboards[colourValue] -= 1ULL << destination;
+    bitboards[colourValue] += 1ULL << start;
+    state[destination] = 0;
+
+    if (move.isCapture()) {
+        // Check if en passant or normal capture
+        if (flags == 5) {
+            int offset = isWhiteTurn ? 8 : -8;
+            int pieceTaken = gameHistory.back().capturedPiece;
+            bitboards[pieceTaken] += 1ULL << (destination + offset);
+            bitboards[8 - colourValue] += 1ULL << (destination + offset);
+            state[destination + offset] = pieceTaken;
+        } else {
+            int pieceTaken = gameHistory.back().capturedPiece;
+            bitboards[pieceTaken] += 1ULL << destination;
+            bitboards[8 - colourValue] += 1ULL << destination;
+            state[destination] = pieceTaken;
+        }
+    }
+
+    // Kingside castle
+    if (flags == 2) {
+        bitboards[colourValue + 4] += 1ULL << (start + 3);
+        bitboards[colourValue + 4] -= 1ULL << (start + 1);
+        bitboards[colourValue] += 1ULL << (start + 3);
+        bitboards[colourValue] -= 1ULL << (start + 1);
+        state[start + 1] = 0;
+        state[start + 3] = colourValue + 4;
+    }
+
+    // Queenside castle
+    if (flags == 3) {
+        bitboards[colourValue + 4] += 1ULL << (start - 4);
+        bitboards[colourValue + 4] -= 1ULL << (start - 1);
+        bitboards[colourValue] += 1ULL << (start - 4);
+        bitboards[colourValue] -= 1ULL << (start - 1);
+        state[start - 1] = 0;
+        state[start - 4] = colourValue + 4;
+    }
+
+    isWhiteTurn = !isWhiteTurn;
+
+    gameHistory.pop_back();
+    moves.clear();
+    setup();
 }
 
 int Board::calculateFlag(int startSquare, int destinationSquare) {

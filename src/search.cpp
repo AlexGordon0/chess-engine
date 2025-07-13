@@ -26,7 +26,9 @@ int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove) {
     }
     int value = -1000000000;
     for (Move move : board.getMoves()) {
-        int newValue = -negamax(board.makeMove(move), depth - 1, -beta, -alpha, false);
+        board.makeMove(move);
+        int newValue = -negamax(board, depth - 1, -beta, -alpha, false);
+        board.unmakeMove(move);
         if (updateBestMove) {
             /* std::cout << 7 - depth << ": " << move.getStart() << ", " << move.getDestination() << ": " << newValue
                       << '\n'; */
@@ -56,7 +58,9 @@ int qSearch(Board board, int depth, int alpha, int beta) {
         if (!move.isPromotion() && !move.isCapture()) {
             break;
         }
-        int value = -qSearch(board.makeMove(move), depth - 1, -beta, -alpha);
+        board.makeMove(move);
+        int value = -qSearch(board, depth - 1, -beta, -alpha);
+        board.unmakeMove(move);
         if (value >= beta) {
             return value;
         }
