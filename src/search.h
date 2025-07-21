@@ -3,12 +3,16 @@
 
 #include "board.h"
 
-namespace search {
+class Searcher {
+  public:
+    Searcher();
+    Move getBestMove(Board board);
 
-Move getBestMove(Board board);
-int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove = true);
-int qSearch(Board board, int depth, int alpha, int beta);
-
-}
+  private:
+    Board board;
+    Move bestMove;
+    int negamax(int depth, int alpha, int beta, bool updateBestMove = true);
+    int qSearch(int depth, int alpha, int beta);
+};
 
 #endif

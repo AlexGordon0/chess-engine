@@ -34,7 +34,6 @@ class Board {
   public:
     Board(std::string startingPos);
 
-    int calculateFlag(int startSquare, int destinationSquare);
     void makeMove(Move move);
     void unmakeMove(Move move);
 
@@ -54,7 +53,7 @@ class Board {
   private:
     std::array<short, 64> state = {0};
 
-    /* Bitboards indexes are:
+    /* Bitboard indexes are:
      *  0 - White pieces
      *  1 - White pawns
      *  2 - White knights
@@ -108,6 +107,7 @@ class Board {
     void calculatePinnedPieces();
     void addPinnedPieceMoves(int pieceSquare, uint64_t pinnedMovesMask, bool isDiagonalPin);
     void addPinnedPawnMoves(int pieceSquare, uint64_t pinnedMovesMask);
+    bool checkEnPassantPin(int startSquare);
 
     void generateLegalMoves();
     void generatePawnMoves();
@@ -116,7 +116,6 @@ class Board {
     void generateSlidingMoves();
     void generateKingMoves();
     void addMovesFromBitmap(uint64_t bitmap, int startSquareOffset);
-    bool checkEnPassantPin(int startSquare);
 };
 
 #endif

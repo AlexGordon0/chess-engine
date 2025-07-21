@@ -3,31 +3,33 @@
 #include <algorithm>
 #include <limits>
 
-namespace search {
+Searcher::Searcher() : bestMove(-1, -1, -1), board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {}
 
-Move bestMove = Move(-1, -1, -1);
-
-Move getBestMove(Board board) {
-    negamax(board, 6, -std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+Move Searcher::getBestMove(Board _board) {
+    bestMove = Move(-1, -1, -1);
+    board = _board;
+    negamax(6, -std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
     return bestMove;
 }
 
-int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove) {
-    if (board.getMoves().size() == 0 || board.getGameStatus()) {
+int Searcher::negamax(int depth, int alpha, int beta, bool updateBestMove) {
+    std::vector<Move> moves = board.getMoves();
+    std::sort(moves.begin(), moves.end(), std::greater<>());
+    if (moves.size() == 0 || board.getGameStatus()) {
         return evaluate::evaluatePosition(board, depth);
     }
     if (depth <= 0) {
-        if (!board.getMoves()[0].isCapture() && !board.getMoves()[0].isPromotion()) {
+        if (!moves[0].isCapture() && !moves[0].isPromotion()) {
             return evaluate::evaluatePosition(board);
         } else {
             // return evaluate::evaluatePosition(board);
-            return qSearch(board, depth, alpha, beta);
+            return qSearch(depth, alpha, beta);
         }
     }
     int value = -1000000000;
-    for (Move move : board.getMoves()) {
+    for (Move move : moves) {
         board.makeMove(move);
-        int newValue = -negamax(board, depth - 1, -beta, -alpha, false);
+        int newValue = -negamax(depth - 1, -beta, -alpha, false);
         board.unmakeMove(move);
         if (updateBestMove) {
             /* std::cout << 7 - depth << ": " << move.getStart() << ", " << move.getDestination() << ": " << newValue
@@ -47,19 +49,21 @@ int negamax(Board board, int depth, int alpha, int beta, bool updateBestMove) {
     return value;
 }
 
-int qSearch(Board board, int depth, int alpha, int beta) {
+int Searcher::qSearch(int depth, int alpha, int beta) {
     int bestValue = evaluate::evaluatePosition(board, depth);
     if (bestValue >= beta) {
         return bestValue;
     }
     alpha = std::max(alpha, bestValue);
 
-    for (Move move : board.getMoves()) {
+    std::vector<Move> moves = board.getMoves();
+    std::sort(moves.begin(), moves.end(), std::greater<>());
+    for (Move move : moves) {
         if (!move.isPromotion() && !move.isCapture()) {
             break;
         }
         board.makeMove(move);
-        int value = -qSearch(board, depth - 1, -beta, -alpha);
+        int value = -qSearch(depth - 1, -beta, -alpha);
         board.unmakeMove(move);
         if (value >= beta) {
             return value;
@@ -72,5 +76,3 @@ int qSearch(Board board, int depth, int alpha, int beta) {
 
     return bestValue;
 }
-
-} // namespace search

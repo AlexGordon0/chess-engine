@@ -22,13 +22,62 @@ struct BotSettings {
     bool AIControlsWhite;
 };
 
-class BoardManager {
+class GameController {
   public:
-    Board board;
-    std::string startingPos;
-    BotSettings botSettings;
-    BoardManager(std::string _startingPos, BotSettings _botSettings) : board(_startingPos), botSettings(_botSettings) {
+    GameController(std::string _startingPos, BotSettings _botSettings)
+        : board(_startingPos), botSettings(_botSettings), searcher() {
         startingPos = _startingPos;
+    }
+
+    std::array<short, 64> getPieceArray() {
+        return board.getState();
+    }
+
+    bool isAITurn() {
+        return botSettings.enabled && (botSettings.AIControlsWhite == board.getIsWhiteTurn()) && !board.getGameStatus();
+    }
+
+    bool isWhiteTurn() {
+        return board.getIsWhiteTurn();
+    }
+
+    bool isPromotion(int startSquare, int destinationSquare) {
+        return board.getState()[startSquare] == 1 && destinationSquare > 55 ||
+               board.getState()[startSquare] == 9 && destinationSquare < 8;
+    }
+
+    bool isGameOver() { return board.getGameStatus() != 0; }
+
+    int calculateFlag(int startSquare, int destinationSquare) {
+        std::vector<Move> moves = board.getMoves();
+        for (Move move : moves) {
+            if (startSquare == move.getStart() && destinationSquare == move.getDestination()) {
+                return move.getFlags();
+            }
+        }
+        return 0;
+    }
+
+    std::set<int> getLegalMoveDestinations(int startSquare) {
+        return board.getMoveOptions(startSquare);
+    }
+
+    void makeMove(Move move) {
+        board.makeMove(move);
+    }
+
+    void makeAIMove() {
+        Move bestMove = searcher.getBestMove(board);
+        board.makeMove(bestMove);
+    }
+
+    void makePromotionMove(int column, int row, int startSquare, int destinationSquare) {
+        int flags = 8;
+        flags |= (row * 2 + column);
+        if (board.getState()[destinationSquare]) {
+            flags |= 4;
+        }
+        board.makeMove(Move(startSquare, destinationSquare, flags));
     }
 
     void perftTimer(int plyDepth) {
@@ -52,6 +101,11 @@ class BoardManager {
     }
 
   private:
+    Board board;
+    std::string startingPos;
+    BotSettings botSettings;
+    Searcher searcher;
+
     int perft(int depth, bool topLevel = true) {
         if (depth == 0) {
             return 1;
@@ -106,10 +160,10 @@ class PromotionMenu {
     }
 };
 
-void drawPieces(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14], Board &board) {
+void drawPieces(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14], std::array<short, 64> pieceArray) {
     for (int rank = 0; rank < 8; rank++) {
         for (int file = 0; file < 8; file++) {
-            int squareValue = board.getState().at(rank * 8 + file);
+            int squareValue = pieceArray[rank * 8 + file];
             if (squareValue > 0) {
                 SDL_Rect rect = {file * SQUARE_SIZE, (7 - rank) * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
                 SDL_RenderCopy(renderer, pieceTextures[squareValue - 1], NULL, &rect);
@@ -182,10 +236,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    BoardManager boardManager = BoardManager(startingPos, botSettings);
+    GameController gameController = GameController(startingPos, botSettings);
 
     if (plyDepth >= 0) {
-        boardManager.perftTimer(plyDepth);
+        gameController.perftTimer(plyDepth);
         return 0;
     }
 
@@ -225,19 +279,12 @@ int main(int argc, char *argv[]) {
             if (event.type == SDL_QUIT) {
                 running = false;
             }
-            if (event.type == SDL_MOUSEBUTTONDOWN && !boardManager.board.getGameStatus() &&
-                (botSettings.enabled && boardManager.board.getIsWhiteTurn() != botSettings.AIControlsWhite ||
-                 !botSettings.enabled)) {
+            if (event.type == SDL_MOUSEBUTTONDOWN && !gameController.isGameOver() && !gameController.isAITurn()) {
                 if (promotionMenu.display) {
                     if (promotionMenu.isClicked(event.button.x, event.button.y)) {
                         int column = (event.button.x - promotionMenu.x) / (SQUARE_SIZE * 2);
                         int row = (event.button.y - promotionMenu.y) / (SQUARE_SIZE * 2);
-                        int flags = 8;
-                        flags |= (row * 2 + column);
-                        if (boardManager.board.getState()[squareClicked]) {
-                            flags |= 4;
-                        }
-                        boardManager.board.makeMove(Move(startSquare, squareClicked, flags));
+                        gameController.makePromotionMove(column, row, startSquare, squareClicked);
                         promotionMenu.display = false;
                         startSquare = -1;
                         moveOptions.clear();
@@ -247,24 +294,22 @@ int main(int argc, char *argv[]) {
                     int rank = 7 - event.button.y / SQUARE_SIZE;
                     squareClicked = rank * 8 + file;
                     if (startSquare == -1) {
-                        moveOptions = boardManager.board.getMoveOptions(squareClicked);
+                        moveOptions = gameController.getLegalMoveDestinations(squareClicked);
                         if (!moveOptions.empty()) {
                             startSquare = squareClicked;
                         }
                     } else if (startSquare >= 0) {
                         if (moveOptions.contains(squareClicked)) {
-                            if (boardManager.board.getState()[startSquare] == 1 && squareClicked > 55 ||
-                                boardManager.board.getState()[startSquare] == 9 && squareClicked < 8) {
+                            if (gameController.isPromotion(startSquare, squareClicked)) {
                                 promotionMenu.display = true;
                             } else {
-                                int flags = boardManager.board.calculateFlag(startSquare, squareClicked);
-                                boardManager.board.makeMove(Move(startSquare, squareClicked, flags));
-                                boardManager.board.unmakeMove(Move(startSquare, squareClicked, flags));
+                                int flags = gameController.calculateFlag(startSquare, squareClicked);
+                                gameController.makeMove(Move(startSquare, squareClicked, flags));
                                 startSquare = -1;
                                 moveOptions.clear();
                             }
                         } else {
-                            moveOptions = boardManager.board.getMoveOptions(squareClicked);
+                            moveOptions = gameController.getLegalMoveDestinations(squareClicked);
                             if (!moveOptions.empty() && startSquare != squareClicked) {
                                 startSquare = squareClicked;
                             } else {
@@ -285,19 +330,17 @@ int main(int argc, char *argv[]) {
         }
         // drawOpponentAttackMap(renderer, board.getOpponentAttackMap());
 
-        drawPieces(renderer, pieceTextures, boardManager.board);
+        drawPieces(renderer, pieceTextures, gameController.getPieceArray());
 
         if (promotionMenu.display) {
-            promotionMenu.draw(renderer, pieceTextures, boardManager.board.getIsWhiteTurn());
+            promotionMenu.draw(renderer, pieceTextures, gameController.isWhiteTurn());
         }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(20);
 
-        if (botSettings.enabled && botSettings.AIControlsWhite == boardManager.board.getIsWhiteTurn() &&
-            !boardManager.board.getGameStatus()) {
-            Move bestMove = search::getBestMove(boardManager.board);
-            boardManager.board.makeMove(bestMove);
+        if (gameController.isAITurn()) {
+            gameController.makeAIMove();
         }
     }
 
