@@ -1,22 +1,25 @@
 #include "board.h"
+
 #include "magics.h"
 #include "masks.h"
+
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <iostream>
 #include <map>
 #include <sstream>
 
-#define WHITE 0
-#define PAWN 1
-#define KNIGHT 2
-#define BISHOP 3
-#define ROOK 4
-#define QUEEN 5
-#define KING 6
-#define BLACK 8
+constexpr int WHITE = 0;
+constexpr int PAWN = 1;
+constexpr int KNIGHT = 2;
+constexpr int BISHOP = 3;
+constexpr int ROOK = 4;
+constexpr int QUEEN = 5;
+constexpr int KING = 6;
+constexpr int BLACK = 8;
 
-Board::Board(std::string startingPos) {
+Board::Board(std::string_view startingPos) {
     convertFromFen(startingPos);
     setup();
 }
@@ -54,28 +57,43 @@ void Board::setup() {
     }
 }
 
-std::array<short, 64> Board::getState() { return state; }
+std::array<short, 64> Board::getState() const {
+    return state;
+}
 
-std::vector<Move> Board::getMoves() { return moves; }
+std::vector<Move> Board::getMoves() const {
+    return moves;
+}
 
-uint64_t Board::getBitboard(int index) { return bitboards[index]; }
+uint64_t Board::getBitboard(int index) const {
+    return bitboards[index];
+}
 
-short Board::getEnPassantSquare() { return enPassantSquare; }
+short Board::getEnPassantSquare() const {
+    return enPassantSquare;
+}
 
-bool Board::getIsWhiteTurn() { return isWhiteTurn; }
+bool Board::getIsWhiteTurn() const {
+    return isWhiteTurn;
+}
 
-uint64_t Board::getOpponentAttackMap() { return opponentAttackMap; }
+uint64_t Board::getOpponentAttackMap() const {
+    return opponentAttackMap;
+}
 
-short Board::getGameStatus() { return gameStatus; }
+short Board::getGameStatus() const {
+    return gameStatus;
+}
 
-void Board::convertFromFen(std::string fenString) {
-    std::map<char, int> pieceLetterToPieceNum = {{'p', 1}, {'n', 2}, {'b', 3}, {'r', 4}, {'q', 5}, {'k', 6}};
+void Board::convertFromFen(std::string_view fenString) {
+    std::map<char, int> pieceLetterToPieceNum = {{'p', 1}, {'n', 2}, {'b', 3},
+                                                 {'r', 4}, {'q', 5}, {'k', 6}};
 
     int file = 0, rank = 7;
 
     std::vector<std::string> segments;
     std::string segment;
-    std::stringstream ss(fenString);
+    std::stringstream ss(static_cast<std::string>(fenString));
     while (std::getline(ss, segment, ' ')) {
         segments.push_back(segment);
     }
@@ -252,26 +270,32 @@ uint64_t Board::generateSlidingAttackMaps() {
                 uint64_t occupancyMask = magics::bishopOccupancyMasks[pieceSquare];
                 uint64_t magic = magics::bishopMagics[pieceSquare];
                 int numBits = magics::bishopNumBits[pieceSquare];
-                int index = ((((bitboards[WHITE] | bitboards[BLACK]) & ~oppositionKing) & occupancyMask) * magic) >>
+                int index = ((((bitboards[WHITE] | bitboards[BLACK]) & ~oppositionKing) &
+                              occupancyMask) *
+                             magic) >>
                             (64 - numBits);
                 uint64_t possibleMoves = magics::bishopLookupTable[pieceSquare][index];
                 attackMap |= possibleMoves;
                 if (possibleMoves & oppositionKing) {
                     numChecks++;
-                    calculateBlockMask(pieceSquare, std::countr_zero(oppositionKing), true);
+                    calculateBlockMask(pieceSquare, std::countr_zero(oppositionKing),
+                                       true);
                 }
             }
             if (i == ROOK | i == QUEEN) {
                 uint64_t occupancyMask = magics::rookOccupancyMasks[pieceSquare];
                 uint64_t magic = magics::rookMagics[pieceSquare];
                 int numBits = magics::rookNumBits[pieceSquare];
-                int index = ((((bitboards[WHITE] | bitboards[BLACK]) & ~oppositionKing) & occupancyMask) * magic) >>
+                int index = ((((bitboards[WHITE] | bitboards[BLACK]) & ~oppositionKing) &
+                              occupancyMask) *
+                             magic) >>
                             (64 - numBits);
                 uint64_t possibleMoves = magics::rookLookupTable[pieceSquare][index];
                 attackMap |= possibleMoves;
                 if (possibleMoves & oppositionKing) {
                     numChecks++;
-                    calculateBlockMask(pieceSquare, std::countr_zero(oppositionKing), false);
+                    calculateBlockMask(pieceSquare, std::countr_zero(oppositionKing),
+                                       false);
                 }
             }
 
@@ -283,22 +307,28 @@ uint64_t Board::generateSlidingAttackMaps() {
 }
 
 void Board::calculateBlockMask(int pieceSquare, int kingSquare, bool isBishop) {
-    uint64_t magic = isBishop ? magics::bishopMagics[pieceSquare] : magics::rookMagics[pieceSquare];
-    uint64_t occupancyMask =
-        isBishop ? magics::bishopOccupancyMasks[pieceSquare] : magics::rookOccupancyMasks[pieceSquare];
-    int numBits = isBishop ? magics::bishopNumBits[pieceSquare] : magics::rookNumBits[pieceSquare];
+    uint64_t magic =
+        isBishop ? magics::bishopMagics[pieceSquare] : magics::rookMagics[pieceSquare];
+    uint64_t occupancyMask = isBishop ? magics::bishopOccupancyMasks[pieceSquare]
+                                      : magics::rookOccupancyMasks[pieceSquare];
+    int numBits =
+        isBishop ? magics::bishopNumBits[pieceSquare] : magics::rookNumBits[pieceSquare];
 
-    int pieceIndex = (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >> (64 - numBits);
+    int pieceIndex = (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >>
+                     (64 - numBits);
     uint64_t pieceAttacks = isBishop ? magics::bishopLookupTable[pieceSquare][pieceIndex]
                                      : magics::rookLookupTable[pieceSquare][pieceIndex];
 
     magic = isBishop ? magics::bishopMagics[kingSquare] : magics::rookMagics[kingSquare];
-    occupancyMask = isBishop ? magics::bishopOccupancyMasks[kingSquare] : magics::rookOccupancyMasks[kingSquare];
-    numBits = isBishop ? magics::bishopNumBits[kingSquare] : magics::rookNumBits[kingSquare];
+    occupancyMask = isBishop ? magics::bishopOccupancyMasks[kingSquare]
+                             : magics::rookOccupancyMasks[kingSquare];
+    numBits =
+        isBishop ? magics::bishopNumBits[kingSquare] : magics::rookNumBits[kingSquare];
 
-    int kingIndex = (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >> (64 - numBits);
-    uint64_t kingAttacks =
-        isBishop ? magics::bishopLookupTable[kingSquare][kingIndex] : magics::rookLookupTable[kingSquare][kingIndex];
+    int kingIndex = (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >>
+                    (64 - numBits);
+    uint64_t kingAttacks = isBishop ? magics::bishopLookupTable[kingSquare][kingIndex]
+                                    : magics::rookLookupTable[kingSquare][kingIndex];
 
     checkEvasionMask = pieceAttacks & kingAttacks | 1ULL << pieceSquare;
 }
@@ -328,13 +358,16 @@ void Board::calculatePinnedPieces() {
     uint64_t kingBishopMask = masks::bishopMoveMasks[kingLocation];
     uint64_t kingRookMask = masks::rookMoveMasks[kingLocation];
     uint64_t pinningPieces =
-        (bitboards[8 - colourValue + BISHOP] | bitboards[8 - colourValue + QUEEN]) & kingBishopMask |
-        (bitboards[8 - colourValue + ROOK] | bitboards[8 - colourValue + QUEEN]) & kingRookMask;
+        (bitboards[8 - colourValue + BISHOP] | bitboards[8 - colourValue + QUEEN]) &
+            kingBishopMask |
+        (bitboards[8 - colourValue + ROOK] | bitboards[8 - colourValue + QUEEN]) &
+            kingRookMask;
     while (pinningPieces) {
         int pieceSquare = std::countr_zero(pinningPieces);
         int pieceFile = pieceSquare & 7;
         int pieceRank = pieceSquare / 8;
-        int chebyshevDistance = std::max(abs(kingFile - pieceFile), abs(kingRank - pieceRank));
+        int chebyshevDistance =
+            std::max(abs(kingFile - pieceFile), abs(kingRank - pieceRank));
         int kingOffset = (pieceSquare - kingLocation) / chebyshevDistance;
 
         uint64_t kingSightMap = 0;
@@ -353,11 +386,13 @@ void Board::calculatePinnedPieces() {
                 break;
             }
         }
-        uint64_t pinnedPieceBitboard = kingSightMap & pieceSightMap & bitboards[colourValue];
+        uint64_t pinnedPieceBitboard =
+            kingSightMap & pieceSightMap & bitboards[colourValue];
         if (pinnedPieceBitboard) {
             int pinnedPieceSquare = std::countr_zero(pinnedPieceBitboard);
             pinnedPieces |= pinnedPieceBitboard;
-            uint64_t possibleMovesRay = (kingSightMap | pieceSightMap) & ~pinnedPieceBitboard & checkEvasionMask;
+            uint64_t possibleMovesRay =
+                (kingSightMap | pieceSightMap) & ~pinnedPieceBitboard & checkEvasionMask;
             if ((state[pinnedPieceSquare] & 0b111) == PAWN) {
                 addPinnedPawnMoves(pinnedPieceSquare, possibleMovesRay);
             } else {
@@ -369,7 +404,8 @@ void Board::calculatePinnedPieces() {
     }
 }
 
-void Board::addPinnedPieceMoves(int pieceSquare, uint64_t pinnedMovesMask, bool isDiagonalPin) {
+void Board::addPinnedPieceMoves(int pieceSquare, uint64_t pinnedMovesMask,
+                                bool isDiagonalPin) {
     bool diagonalAndBishop = isDiagonalPin && (state[pieceSquare] & 0b111) == BISHOP;
     bool notDiagonalAndRook = !isDiagonalPin && (state[pieceSquare] & 0b111) == ROOK;
     bool isQueen = (state[pieceSquare] & 0b111) == QUEEN;
@@ -389,39 +425,47 @@ void Board::addPinnedPieceMoves(int pieceSquare, uint64_t pinnedMovesMask, bool 
 void Board::addPinnedPawnMoves(int pieceSquare, uint64_t pinnedMovesMask) {
     uint64_t pinnedPawnBitboard = 1ULL << pieceSquare;
     if (isWhiteTurn) {
-        uint64_t westCaptures = pinnedPawnBitboard << 7 & (bitboards[BLACK] | (1ULL << enPassantSquare)) &
+        uint64_t westCaptures = pinnedPawnBitboard << 7 &
+                                (bitboards[BLACK] | (1ULL << enPassantSquare)) &
                                 0x7f7f7f7f7f7f7f7f & checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(westCaptures, -7);
 
-        uint64_t eastCaptures = pinnedPawnBitboard << 9 & (bitboards[BLACK] | (1ULL << enPassantSquare)) &
+        uint64_t eastCaptures = pinnedPawnBitboard << 9 &
+                                (bitboards[BLACK] | (1ULL << enPassantSquare)) &
                                 0xfefefefefefefefe & checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(eastCaptures, -9);
 
-        uint64_t forwardMoves =
-            pinnedPawnBitboard << 8 & ~(bitboards[WHITE] | bitboards[BLACK]) & checkEvasionMask & pinnedMovesMask;
+        uint64_t forwardMoves = pinnedPawnBitboard << 8 &
+                                ~(bitboards[WHITE] | bitboards[BLACK]) &
+                                checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(forwardMoves, -8);
 
         uint64_t unmovedPawns = pinnedPawnBitboard & 0xff00;
         uint64_t freeSquares = ~(bitboards[WHITE] | bitboards[BLACK]);
-        uint64_t doublePawnMoves = (unmovedPawns << 8 & freeSquares) << 8 & (unmovedPawns << 16 & freeSquares) &
+        uint64_t doublePawnMoves = (unmovedPawns << 8 & freeSquares) << 8 &
+                                   (unmovedPawns << 16 & freeSquares) &
                                    checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(doublePawnMoves, -16);
     } else {
-        uint64_t westCaptures = pinnedPawnBitboard >> 9 & (bitboards[WHITE] | (1ULL << enPassantSquare)) &
+        uint64_t westCaptures = pinnedPawnBitboard >> 9 &
+                                (bitboards[WHITE] | (1ULL << enPassantSquare)) &
                                 0x7f7f7f7f7f7f7f7f & checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(westCaptures, 9);
 
-        uint64_t eastCaptures = pinnedPawnBitboard >> 7 & (bitboards[WHITE] | (1ULL << enPassantSquare)) &
+        uint64_t eastCaptures = pinnedPawnBitboard >> 7 &
+                                (bitboards[WHITE] | (1ULL << enPassantSquare)) &
                                 0xfefefefefefefefe & checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(eastCaptures, 7);
 
-        uint64_t forwardMoves =
-            pinnedPawnBitboard >> 8 & ~(bitboards[WHITE] | bitboards[BLACK]) & checkEvasionMask & pinnedMovesMask;
+        uint64_t forwardMoves = pinnedPawnBitboard >> 8 &
+                                ~(bitboards[WHITE] | bitboards[BLACK]) &
+                                checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(forwardMoves, 8);
 
         uint64_t unmovedPawns = pinnedPawnBitboard & 0xff000000000000;
         uint64_t freeSquares = ~(bitboards[WHITE] | bitboards[BLACK]);
-        uint64_t doublePawnMoves = (unmovedPawns >> 8 & freeSquares) >> 8 & (unmovedPawns >> 16 & freeSquares) &
+        uint64_t doublePawnMoves = (unmovedPawns >> 8 & freeSquares) >> 8 &
+                                   (unmovedPawns >> 16 & freeSquares) &
                                    checkEvasionMask & pinnedMovesMask;
         addMovesFromBitmap(doublePawnMoves, 16);
     }
@@ -479,21 +523,24 @@ bool Board::checkEnPassantPin(int startSquare) {
     if (!(rankMask & bitboards[colourValue + KING])) {
         return false;
     }
-    if (!(rankMask & (bitboards[8 - colourValue + ROOK] | bitboards[8 - colourValue + QUEEN]))) {
+    if (!(rankMask &
+          (bitboards[8 - colourValue + ROOK] | bitboards[8 - colourValue + QUEEN]))) {
         return false;
     }
 
     int offset = isWhiteTurn ? -8 : 8;
     int capturedPawn = enPassantSquare + offset;
 
-    uint64_t pawnsRemoved = (bitboards[WHITE] | bitboards[BLACK]) & ~(1ULL << startSquare) & ~(1ULL << capturedPawn);
+    uint64_t pawnsRemoved = (bitboards[WHITE] | bitboards[BLACK]) &
+                            ~(1ULL << startSquare) & ~(1ULL << capturedPawn);
     int kingSquare = std::countr_zero(bitboards[colourValue + KING]);
     int offsets[2] = {-1, 1};
     for (int i = 0; i < 2; i++) {
         for (int j = 1; i <= masks::numSquaresToEdge[kingSquare][i + 2]; j++) {
             int square = kingSquare + offsets[i] * j;
             if (pawnsRemoved & 1ULL << square) {
-                if (state[square] == (8 - colourValue + ROOK) || state[square] == (8 - colourValue + QUEEN)) {
+                if (state[square] == (8 - colourValue + ROOK) ||
+                    state[square] == (8 - colourValue + QUEEN)) {
                     return true;
                 }
                 break;
@@ -506,39 +553,47 @@ bool Board::checkEnPassantPin(int startSquare) {
 void Board::generatePawnMoves() {
     if (isWhiteTurn) {
         uint64_t pawnsWithoutPins = bitboards[WHITE + PAWN] & ~pinnedPieces;
-        uint64_t westCaptures = pawnsWithoutPins << 7 & (bitboards[BLACK] | (1ULL << enPassantSquare)) &
+        uint64_t westCaptures = pawnsWithoutPins << 7 &
+                                (bitboards[BLACK] | (1ULL << enPassantSquare)) &
                                 0x7f7f7f7f7f7f7f7f & checkEvasionMask;
         addMovesFromBitmap(westCaptures, -7);
 
-        uint64_t eastCaptures = pawnsWithoutPins << 9 & (bitboards[BLACK] | (1ULL << enPassantSquare)) &
+        uint64_t eastCaptures = pawnsWithoutPins << 9 &
+                                (bitboards[BLACK] | (1ULL << enPassantSquare)) &
                                 0xfefefefefefefefe & checkEvasionMask;
         addMovesFromBitmap(eastCaptures, -9);
 
-        uint64_t forwardMoves = pawnsWithoutPins << 8 & ~(bitboards[WHITE] | bitboards[BLACK]) & checkEvasionMask;
+        uint64_t forwardMoves = pawnsWithoutPins << 8 &
+                                ~(bitboards[WHITE] | bitboards[BLACK]) &
+                                checkEvasionMask;
         addMovesFromBitmap(forwardMoves, -8);
 
         uint64_t unmovedPawns = pawnsWithoutPins & 0xff00;
         uint64_t freeSquares = ~(bitboards[WHITE] | bitboards[BLACK]);
-        uint64_t doublePawnMoves =
-            (unmovedPawns << 8 & freeSquares) << 8 & (unmovedPawns << 16 & freeSquares) & checkEvasionMask;
+        uint64_t doublePawnMoves = (unmovedPawns << 8 & freeSquares) << 8 &
+                                   (unmovedPawns << 16 & freeSquares) & checkEvasionMask;
         addMovesFromBitmap(doublePawnMoves, -16);
     } else {
         uint64_t pawnsWithoutPins = bitboards[BLACK + PAWN] & ~pinnedPieces;
-        uint64_t westCaptures = pawnsWithoutPins >> 9 & (bitboards[WHITE] | (1ULL << enPassantSquare)) &
+        uint64_t westCaptures = pawnsWithoutPins >> 9 &
+                                (bitboards[WHITE] | (1ULL << enPassantSquare)) &
                                 0x7f7f7f7f7f7f7f7f & checkEvasionMask;
         addMovesFromBitmap(westCaptures, 9);
 
-        uint64_t eastCaptures = pawnsWithoutPins >> 7 & (bitboards[WHITE] | (1ULL << enPassantSquare)) &
+        uint64_t eastCaptures = pawnsWithoutPins >> 7 &
+                                (bitboards[WHITE] | (1ULL << enPassantSquare)) &
                                 0xfefefefefefefefe & checkEvasionMask;
         addMovesFromBitmap(eastCaptures, 7);
 
-        uint64_t forwardMoves = pawnsWithoutPins >> 8 & ~(bitboards[WHITE] | bitboards[BLACK]) & checkEvasionMask;
+        uint64_t forwardMoves = pawnsWithoutPins >> 8 &
+                                ~(bitboards[WHITE] | bitboards[BLACK]) &
+                                checkEvasionMask;
         addMovesFromBitmap(forwardMoves, 8);
 
         uint64_t unmovedPawns = pawnsWithoutPins & 0xff000000000000;
         uint64_t freeSquares = ~(bitboards[WHITE] | bitboards[BLACK]);
-        uint64_t doublePawnMoves =
-            (unmovedPawns >> 8 & freeSquares) >> 8 & (unmovedPawns >> 16 & freeSquares) & checkEvasionMask;
+        uint64_t doublePawnMoves = (unmovedPawns >> 8 & freeSquares) >> 8 &
+                                   (unmovedPawns >> 16 & freeSquares) & checkEvasionMask;
         addMovesFromBitmap(doublePawnMoves, 16);
     }
 }
@@ -548,7 +603,8 @@ void Board::generateKnightMoves() {
     uint64_t bitboardCopy = bitboards[colourValue + KNIGHT] & ~pinnedPieces;
     while (bitboardCopy) {
         int pieceSquare = std::countr_zero(bitboardCopy);
-        uint64_t possibleMoves = masks::knightMoveMasks[pieceSquare] & ~bitboards[colourValue] & checkEvasionMask;
+        uint64_t possibleMoves = masks::knightMoveMasks[pieceSquare] &
+                                 ~bitboards[colourValue] & checkEvasionMask;
         while (possibleMoves) {
             int destinationSquare = std::countr_zero(possibleMoves);
             int flags = 0;
@@ -584,18 +640,22 @@ void Board::generateSlidingMoves() {
                 uint64_t occupancyMask = magics::bishopOccupancyMasks[pieceSquare];
                 uint64_t magic = magics::bishopMagics[pieceSquare];
                 int numBits = magics::bishopNumBits[pieceSquare];
-                int index = (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >> (64 - numBits);
-                uint64_t possibleMoves =
-                    magics::bishopLookupTable[pieceSquare][index] & checkEvasionMask & ~bitboards[colourValue];
+                int index =
+                    (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >>
+                    (64 - numBits);
+                uint64_t possibleMoves = magics::bishopLookupTable[pieceSquare][index] &
+                                         checkEvasionMask & ~bitboards[colourValue];
                 addSlidingMoves(possibleMoves, pieceSquare);
             }
             if (i == ROOK | i == QUEEN) {
                 uint64_t occupancyMask = magics::rookOccupancyMasks[pieceSquare];
                 uint64_t magic = magics::rookMagics[pieceSquare];
                 int numBits = magics::rookNumBits[pieceSquare];
-                int index = (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >> (64 - numBits);
-                uint64_t possibleMoves =
-                    magics::rookLookupTable[pieceSquare][index] & checkEvasionMask & ~bitboards[colourValue];
+                int index =
+                    (((bitboards[WHITE] | bitboards[BLACK]) & occupancyMask) * magic) >>
+                    (64 - numBits);
+                uint64_t possibleMoves = magics::rookLookupTable[pieceSquare][index] &
+                                         checkEvasionMask & ~bitboards[colourValue];
                 addSlidingMoves(possibleMoves, pieceSquare);
             }
             bitboardCopy &= bitboardCopy - 1;
@@ -614,21 +674,26 @@ void Board::generateKingMoves() {
         if (pieceSquare == kingStartingSquare && !numChecks) {
             if (colourCastlingRights & 1) {
                 // Check queenside castling
-                uint64_t queensideCastlingMask = 1ULL << (pieceSquare - 1) | 1ULL << (pieceSquare - 2);
-                if (!(state[pieceSquare - 1] | state[pieceSquare - 2] | state[pieceSquare - 3]) &&
+                uint64_t queensideCastlingMask =
+                    1ULL << (pieceSquare - 1) | 1ULL << (pieceSquare - 2);
+                if (!(state[pieceSquare - 1] | state[pieceSquare - 2] |
+                      state[pieceSquare - 3]) &&
                     !(queensideCastlingMask & opponentAttackMap)) {
                     moves.push_back(Move(pieceSquare, pieceSquare - 2, 3));
                 }
             }
             if (colourCastlingRights & 2) {
                 // Check kingside castling
-                uint64_t kingsideCastlingMask = 1ULL << (pieceSquare + 1) | 1ULL << (pieceSquare + 2);
-                if (!(state[pieceSquare + 1] | state[pieceSquare + 2]) && !(kingsideCastlingMask & opponentAttackMap)) {
+                uint64_t kingsideCastlingMask =
+                    1ULL << (pieceSquare + 1) | 1ULL << (pieceSquare + 2);
+                if (!(state[pieceSquare + 1] | state[pieceSquare + 2]) &&
+                    !(kingsideCastlingMask & opponentAttackMap)) {
                     moves.push_back(Move(pieceSquare, pieceSquare + 2, 2));
                 }
             }
         }
-        uint64_t possibleMoves = masks::kingMoveMasks[pieceSquare] & ~bitboards[colourValue] & ~opponentAttackMap;
+        uint64_t possibleMoves = masks::kingMoveMasks[pieceSquare] &
+                                 ~bitboards[colourValue] & ~opponentAttackMap;
         while (possibleMoves) {
             int destinationSquare = std::countr_zero(possibleMoves);
             int flags = 0;
@@ -677,19 +742,23 @@ void Board::makeMove(Move move) {
             int offset = isWhiteTurn ? -8 : 8;
             pieceTaken = state[destination + offset];
             currentPositionHash ^=
-                magics::zobristKeys[(pieceTaken - 1 - (pieceTaken / 8) * 2) * 64 + destination + offset];
+                magics::zobristKeys[(pieceTaken - 1 - (pieceTaken / 8) * 2) * 64 +
+                                    destination + offset];
             bitboards[pieceTaken] -= 1ULL << (destination + offset);
             bitboards[8 - colourValue] -= 1ULL << (destination + offset);
             state[destination + offset] = 0;
         } else {
             pieceTaken = state[destination];
-            currentPositionHash ^= magics::zobristKeys[(pieceTaken - 1 - (pieceTaken / 8) * 2) * 64 + destination];
+            currentPositionHash ^=
+                magics::zobristKeys[(pieceTaken - 1 - (pieceTaken / 8) * 2) * 64 +
+                                    destination];
             bitboards[pieceTaken] -= 1ULL << destination;
             bitboards[8 - colourValue] -= 1ULL << destination;
         }
     }
 
-    gameHistory.push_back(BoardData(castlingRights, enPassantSquare, oldHalfMoves, pieceTaken));
+    gameHistory.push_back(
+        BoardData(castlingRights, enPassantSquare, oldHalfMoves, pieceTaken));
 
     // Double pawn push
     if (flags == 1) {
@@ -703,28 +772,36 @@ void Board::makeMove(Move move) {
 
     // Kingside castle
     if (flags == 2) {
-        newCastlingRights = isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
+        newCastlingRights =
+            isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
         bitboards[colourValue + ROOK] -= 1ULL << (start + 3);
         bitboards[colourValue + ROOK] += 1ULL << (start + 1);
         bitboards[colourValue] -= 1ULL << (start + 3);
         bitboards[colourValue] += 1ULL << (start + 1);
         state[start + 3] = 0;
         state[start + 1] = colourValue + ROOK;
-        currentPositionHash ^= (magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 + start + 3] ^
-                                magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 + start + 1]);
+        currentPositionHash ^=
+            (magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 +
+                                 start + 3] ^
+             magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 +
+                                 start + 1]);
     }
 
     // Queenside castle
     if (flags == 3) {
-        newCastlingRights = isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
+        newCastlingRights =
+            isWhiteTurn ? newCastlingRights &= 3 : newCastlingRights &= 12;
         bitboards[colourValue + ROOK] -= 1ULL << (start - 4);
         bitboards[colourValue + ROOK] += 1ULL << (start - 1);
         bitboards[colourValue] -= 1ULL << (start - 4);
         bitboards[colourValue] += 1ULL << (start - 1);
         state[start - 4] = 0;
         state[start - 1] = colourValue + ROOK;
-        currentPositionHash ^= (magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 + start - 4] ^
-                                magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 + start - 1]);
+        currentPositionHash ^=
+            (magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 +
+                                 start - 4] ^
+             magics::zobristKeys[(colourValue + ROOK - 1 - (colourValue / 8) * 2) * 64 +
+                                 start - 1]);
     }
 
     int pieceMoved = state[start];
@@ -732,17 +809,21 @@ void Board::makeMove(Move move) {
     bitboards[colourValue] -= 1ULL << start;
     bitboards[colourValue] += 1ULL << destination;
     state[start] = 0;
-    currentPositionHash ^= magics::zobristKeys[(pieceMoved - 1 - (pieceMoved / 8) * 2) * 64 + start];
+    currentPositionHash ^=
+        magics::zobristKeys[(pieceMoved - 1 - (pieceMoved / 8) * 2) * 64 + start];
 
     if (move.isPromotion()) {
         int newPiece = (flags & 3) + colourValue + 2;
         bitboards[newPiece] += 1ULL << destination;
         state[destination] = newPiece;
-        currentPositionHash ^= magics::zobristKeys[(newPiece - 1 - (newPiece / 8) * 2) * 64 + destination];
+        currentPositionHash ^=
+            magics::zobristKeys[(newPiece - 1 - (newPiece / 8) * 2) * 64 + destination];
     } else {
         bitboards[pieceMoved] += 1ULL << destination;
         state[destination] = pieceMoved;
-        currentPositionHash ^= magics::zobristKeys[(pieceMoved - 1 - (pieceMoved / 8) * 2) * 64 + destination];
+        currentPositionHash ^=
+            magics::zobristKeys[(pieceMoved - 1 - (pieceMoved / 8) * 2) * 64 +
+                                destination];
     }
 
     // Update castling rights
@@ -864,7 +945,7 @@ void Board::unmakeMove(Move move) {
     gameHistory.pop_back();
 }
 
-std::set<int> Board::getMoveOptions(int startSquare) {
+std::set<int> Board::getMoveOptions(int startSquare) const {
     std::set<int> moveOptions;
     for (Move move : moves) {
         if (move.getStart() == startSquare) {
@@ -874,7 +955,7 @@ std::set<int> Board::getMoveOptions(int startSquare) {
     return moveOptions;
 }
 
-void Board::printBoard() {
+void Board::printBoard() const {
     std::map<int, char> pieceNumToPieceLetter = {
         {0, 'x'}, {1, 'p'}, {2, 'n'}, {3, 'b'}, {4, 'r'}, {5, 'q'}, {6, 'k'},
     };
@@ -894,7 +975,7 @@ void Board::printBoard() {
     std::cout << '\n';
 }
 
-void Board::printBitboard(uint64_t bitboard) {
+void Board::printBitboard(uint64_t bitboard) const {
     for (int rank = 7; rank >= 0; rank--) {
         for (int file = 0; file < 8; file++) {
             int pixel = bitboard >> (rank * 8 + file) & 1;
@@ -905,8 +986,9 @@ void Board::printBitboard(uint64_t bitboard) {
     std::cout << '\n';
 }
 
-void Board::printMoves() {
+void Board::printMoves() const {
     for (Move move : moves) {
-        std::cout << move.getFlags() << ", " << move.getStart() << ", " << move.getDestination() << '\n';
+        std::cout << move.getFlags() << ", " << move.getStart() << ", "
+                  << move.getDestination() << '\n';
     }
 }

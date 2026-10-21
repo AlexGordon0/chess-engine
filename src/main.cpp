@@ -1,21 +1,30 @@
 #include "board.h"
 #include "search.h"
+
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <array>
 #include <chrono>
-#include <cstdint>
+#include <future>
+#include <iostream>
 #include <map>
+#include <string_view>
 
-#define WINDOW_SIZE 1200
-#define SQUARE_SIZE (WINDOW_SIZE / 8)
+constexpr int WINDOW_SIZE = 800;
+constexpr int SQUARE_SIZE = (WINDOW_SIZE / 8);
 
+// clang-format off
 const std::array<std::string, 64> squareNotation = {
-    "a1", "b1", "c1", "d1", "e1", "f1", "g1", "h1", "a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2",
-    "a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3", "a4", "b4", "c4", "d4", "e4", "f4", "g4", "h4",
-    "a5", "b5", "c5", "d5", "e5", "f5", "g5", "h5", "a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6",
-    "a7", "b7", "c7", "d7", "e7", "f7", "g7", "h7", "a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8",
+    "a1", "b1", "c1", "d1", "e1", "f1", "g1", "h1", 
+    "a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2",
+    "a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3", 
+    "a4", "b4", "c4", "d4", "e4", "f4", "g4", "h4",
+    "a5", "b5", "c5", "d5", "e5", "f5", "g5", "h5", 
+    "a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6",
+    "a7", "b7", "c7", "d7", "e7", "f7", "g7", "h7", 
+    "a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8",
 };
+// clang-format on
 
 struct BotSettings {
     bool enabled;
@@ -23,23 +32,23 @@ struct BotSettings {
 };
 
 class GameController {
-  public:
-    GameController(std::string _startingPos, BotSettings _botSettings)
-        : board(_startingPos), botSettings(_botSettings), searcher() {
+public:
+    GameController(std::string_view _startingPos, BotSettings _botSettings)
+        : board(_startingPos)
+        , botSettings(_botSettings)
+        , searcher() {
         startingPos = _startingPos;
     }
 
-    std::array<short, 64> getPieceArray() {
-        return board.getState();
-    }
+    std::array<short, 64> getPieceArray() { return board.getState(); }
 
     bool isAITurn() {
-        return botSettings.enabled && (botSettings.AIControlsWhite == board.getIsWhiteTurn()) && !board.getGameStatus();
+        return botSettings.enabled &&
+               (botSettings.AIControlsWhite == board.getIsWhiteTurn()) &&
+               !board.getGameStatus();
     }
 
-    bool isWhiteTurn() {
-        return board.getIsWhiteTurn();
-    }
+    bool isWhiteTurn() { return board.getIsWhiteTurn(); }
 
     bool isPromotion(int startSquare, int destinationSquare) {
         return board.getState()[startSquare] == 1 && destinationSquare > 55 ||
@@ -51,7 +60,8 @@ class GameController {
     int calculateFlag(int startSquare, int destinationSquare) {
         std::vector<Move> moves = board.getMoves();
         for (Move move : moves) {
-            if (startSquare == move.getStart() && destinationSquare == move.getDestination()) {
+            if (startSquare == move.getStart() &&
+                destinationSquare == move.getDestination()) {
                 return move.getFlags();
             }
         }
@@ -62,13 +72,45 @@ class GameController {
         return board.getMoveOptions(startSquare);
     }
 
-    void makeMove(Move move) {
-        board.makeMove(move);
+    void makeMove(Move move) { board.makeMove(move); }
+
+    bool isAIThinking() const { return aiThinking; }
+
+    void startAIMove() {
+        if (aiThinking) {
+            return;
+        }
+
+        aiThinking = true;
+        searcher.clearStop();
+        Board boardCopy = board;
+        aiResult = std::async(std::launch::async, [this, boardCopy] mutable {
+            return searcher.getBestMove(boardCopy);
+        });
     }
 
-    void makeAIMove() {
-        Move bestMove = searcher.getBestMove(board);
-        board.makeMove(bestMove);
+    void cancelAI() {
+        if (!aiThinking) {
+            return;
+        }
+        searcher.requestStop();
+        aiResult.wait();
+        aiThinking = false;
+    }
+
+    ~GameController() {
+        cancelAI();
+    }
+
+    void pollAIMove() {
+        if (!aiThinking) {
+            return;
+        }
+        if (aiResult.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            Move bestMove = aiResult.get();
+            board.makeMove(bestMove);
+            aiThinking = false;
+        }
     }
 
     void makePromotionMove(int column, int row, int startSquare, int destinationSquare) {
@@ -83,28 +125,35 @@ class GameController {
     void perftTimer(int plyDepth) {
         for (int i = 0; i <= plyDepth; i++) {
             board = Board(startingPos);
-            std::chrono::duration start = std::chrono::high_resolution_clock().now().time_since_epoch();
-            int startMs = std::chrono::duration_cast<std::chrono::microseconds>(start).count();
+            std::chrono::duration start =
+                std::chrono::high_resolution_clock().now().time_since_epoch();
+            int startMs =
+                std::chrono::duration_cast<std::chrono::microseconds>(start).count();
 
             int moves = perft(i);
 
-            std::chrono::duration end = std::chrono::high_resolution_clock().now().time_since_epoch();
-            int endMs = std::chrono::duration_cast<std::chrono::microseconds>(end).count();
+            std::chrono::duration end =
+                std::chrono::high_resolution_clock().now().time_since_epoch();
+            int endMs =
+                std::chrono::duration_cast<std::chrono::microseconds>(end).count();
             double timeElapsed = endMs - startMs;
             double nps = 0;
             if (timeElapsed) {
-                nps = (double)moves / timeElapsed * 1000000;
+                nps = static_cast<double>(moves) / timeElapsed * 1000000;
             }
 
-            std::cout << i << ": " << moves << " " << timeElapsed / 1000 << "ms @ " << nps << "n/s" << '\n';
+            std::cout << i << ": " << moves << " " << timeElapsed / 1000 << "ms @ "
+                      << nps << "n/s" << '\n';
         }
     }
 
-  private:
+private:
     Board board;
     std::string startingPos;
     BotSettings botSettings;
     Searcher searcher;
+    std::future<Move> aiResult;
+    bool aiThinking = false;
 
     int perft(int depth, bool topLevel = true) {
         if (depth == 0) {
@@ -129,7 +178,7 @@ class GameController {
 };
 
 class PromotionMenu {
-  public:
+public:
     int x, y;
     int width, height;
     bool display;
@@ -148,31 +197,34 @@ class PromotionMenu {
         return xInRange && yInRange;
     }
 
-    void draw(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14], bool isWhiteTurn) {
+    void draw(SDL_Renderer* renderer, SDL_Texture* pieceTextures[14], bool isWhiteTurn) {
         SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
         SDL_Rect rect = {x, y, width, height};
         SDL_RenderFillRect(renderer, &rect);
         int pieceColour = isWhiteTurn ? 0 : 8;
         for (int i = 0; i < 4; i++) {
-            SDL_Rect rect = {x + (i / 2) * SQUARE_SIZE * 2, y + (i & 1) * SQUARE_SIZE * 2, width / 2, height / 2};
+            SDL_Rect rect = {x + (i / 2) * SQUARE_SIZE * 2,
+                             y + (i & 1) * SQUARE_SIZE * 2, width / 2, height / 2};
             SDL_RenderCopy(renderer, pieceTextures[pieceColour + i + 1], NULL, &rect);
         }
     }
 };
 
-void drawPieces(SDL_Renderer *renderer, SDL_Texture *pieceTextures[14], std::array<short, 64> pieceArray) {
+void drawPieces(SDL_Renderer* renderer, SDL_Texture* pieceTextures[14],
+                std::array<short, 64> pieceArray) {
     for (int rank = 0; rank < 8; rank++) {
         for (int file = 0; file < 8; file++) {
             int squareValue = pieceArray[rank * 8 + file];
             if (squareValue > 0) {
-                SDL_Rect rect = {file * SQUARE_SIZE, (7 - rank) * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
+                SDL_Rect rect = {file * SQUARE_SIZE, (7 - rank) * SQUARE_SIZE,
+                                 SQUARE_SIZE, SQUARE_SIZE};
                 SDL_RenderCopy(renderer, pieceTextures[squareValue - 1], NULL, &rect);
             }
         }
     }
 }
 
-void drawBoard(SDL_Renderer *renderer) {
+void drawBoard(SDL_Renderer* renderer) {
     for (int rank = 0; rank < 8; rank++) {
         for (int file = 0; file < 8; file++) {
             if (((rank + file) & 1) == 0) {
@@ -180,35 +232,38 @@ void drawBoard(SDL_Renderer *renderer) {
             } else {
                 SDL_SetRenderDrawColor(renderer, 0x8c, 0xa2, 0xad, 0xff);
             }
-            SDL_Rect square = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
+            SDL_Rect square = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE,
+                               SQUARE_SIZE};
             SDL_RenderFillRect(renderer, &square);
         }
     }
 }
 
-void drawMoveOptions(SDL_Renderer *renderer, std::set<int> moveOptions) {
+void drawMoveOptions(SDL_Renderer* renderer, std::set<int> moveOptions) {
     SDL_SetRenderDrawColor(renderer, 0xff, 0x00, 0x00, 0x55);
     for (int square : moveOptions) {
         int file = square & 7;
         int rank = 7 - square / 8;
-        SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
+        SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE,
+                         SQUARE_SIZE};
         SDL_RenderFillRect(renderer, &rect);
     }
 }
 
-void drawOpponentAttackMap(SDL_Renderer *renderer, uint64_t opponentAttackMap) {
+void drawOpponentAttackMap(SDL_Renderer* renderer, uint64_t opponentAttackMap) {
     SDL_SetRenderDrawColor(renderer, 0x00, 0xff, 0x00, 0x55);
     for (int square = 0; square < 64; square++) {
         if (1ULL << square & opponentAttackMap) {
             int file = square & 7;
             int rank = 7 - square / 8;
-            SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
+            SDL_Rect rect = {file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE,
+                             SQUARE_SIZE};
             SDL_RenderFillRect(renderer, &rect);
         }
     }
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
 
     std::string startingPos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     int plyDepth = -1;
@@ -245,9 +300,10 @@ int main(int argc, char *argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO);
     IMG_Init(IMG_INIT_PNG);
-    SDL_Window *window =
-        SDL_CreateWindow("Chess Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, 0);
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    SDL_Window* window =
+        SDL_CreateWindow("Chess Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                         WINDOW_SIZE, WINDOW_SIZE, 0);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
     const std::map<int, std::string> piecePathMap = {
@@ -255,12 +311,12 @@ int main(int argc, char *argv[]) {
         {8, "bP"}, {9, "bN"}, {10, "bB"}, {11, "bR"}, {12, "bQ"}, {13, "bK"},
     };
 
-    SDL_Texture *pieceTextures[14];
+    SDL_Texture* pieceTextures[14];
     for (int i = 0; i < 14; i++) {
         if (i == 6 || i == 7)
             continue;
         std::string filename = "assets/" + piecePathMap.at(i) + ".png";
-        SDL_Texture *imageTexture = IMG_LoadTexture(renderer, &filename[0]);
+        SDL_Texture* imageTexture = IMG_LoadTexture(renderer, &filename[0]);
         pieceTextures[i] = imageTexture;
     }
 
@@ -277,14 +333,18 @@ int main(int argc, char *argv[]) {
 
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
+                gameController.cancelAI();
                 running = false;
             }
-            if (event.type == SDL_MOUSEBUTTONDOWN && !gameController.isGameOver() && !gameController.isAITurn()) {
+            if (event.type == SDL_MOUSEBUTTONDOWN && !gameController.isGameOver() &&
+                !gameController.isAITurn()) {
                 if (promotionMenu.display) {
                     if (promotionMenu.isClicked(event.button.x, event.button.y)) {
-                        int column = (event.button.x - promotionMenu.x) / (SQUARE_SIZE * 2);
+                        int column =
+                            (event.button.x - promotionMenu.x) / (SQUARE_SIZE * 2);
                         int row = (event.button.y - promotionMenu.y) / (SQUARE_SIZE * 2);
-                        gameController.makePromotionMove(column, row, startSquare, squareClicked);
+                        gameController.makePromotionMove(column, row, startSquare,
+                                                         squareClicked);
                         promotionMenu.display = false;
                         startSquare = -1;
                         moveOptions.clear();
@@ -294,7 +354,8 @@ int main(int argc, char *argv[]) {
                     int rank = 7 - event.button.y / SQUARE_SIZE;
                     squareClicked = rank * 8 + file;
                     if (startSquare == -1) {
-                        moveOptions = gameController.getLegalMoveDestinations(squareClicked);
+                        moveOptions =
+                            gameController.getLegalMoveDestinations(squareClicked);
                         if (!moveOptions.empty()) {
                             startSquare = squareClicked;
                         }
@@ -303,13 +364,16 @@ int main(int argc, char *argv[]) {
                             if (gameController.isPromotion(startSquare, squareClicked)) {
                                 promotionMenu.display = true;
                             } else {
-                                int flags = gameController.calculateFlag(startSquare, squareClicked);
-                                gameController.makeMove(Move(startSquare, squareClicked, flags));
+                                int flags = gameController.calculateFlag(startSquare,
+                                                                         squareClicked);
+                                gameController.makeMove(
+                                    Move(startSquare, squareClicked, flags));
                                 startSquare = -1;
                                 moveOptions.clear();
                             }
                         } else {
-                            moveOptions = gameController.getLegalMoveDestinations(squareClicked);
+                            moveOptions =
+                                gameController.getLegalMoveDestinations(squareClicked);
                             if (!moveOptions.empty() && startSquare != squareClicked) {
                                 startSquare = squareClicked;
                             } else {
@@ -339,8 +403,9 @@ int main(int argc, char *argv[]) {
         SDL_RenderPresent(renderer);
         SDL_Delay(20);
 
-        if (gameController.isAITurn()) {
-            gameController.makeAIMove();
+        gameController.pollAIMove();
+        if (running && gameController.isAITurn() && !gameController.isAIThinking()) {
+            gameController.startAIMove();
         }
     }
 

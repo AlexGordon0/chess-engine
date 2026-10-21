@@ -1,9 +1,14 @@
 #include "search.h"
+
 #include "evaluate.h"
+
 #include <algorithm>
 #include <limits>
 
-Searcher::Searcher() : bestMove(-1, -1, -1), board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {}
+Searcher::Searcher()
+    : bestMove(-1, -1, -1)
+    , board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {
+}
 
 Move Searcher::getBestMove(Board _board) {
     bestMove = Move(-1, -1, -1);
@@ -13,6 +18,10 @@ Move Searcher::getBestMove(Board _board) {
 }
 
 int Searcher::negamax(int depth, int alpha, int beta, bool updateBestMove) {
+    if (wasStopped()) {
+        return 0;
+    }
+
     std::vector<Move> moves = board.getMoves();
     std::sort(moves.begin(), moves.end(), std::greater<>());
     if (moves.size() == 0 || board.getGameStatus()) {
@@ -31,6 +40,9 @@ int Searcher::negamax(int depth, int alpha, int beta, bool updateBestMove) {
         board.makeMove(move);
         int newValue = -negamax(depth - 1, -beta, -alpha, false);
         board.unmakeMove(move);
+        if (wasStopped()) {
+            return 0;
+        }
         if (updateBestMove) {
             /* std::cout << 7 - depth << ": " << move.getStart() << ", " << move.getDestination() << ": " << newValue
                       << '\n'; */
@@ -50,6 +62,10 @@ int Searcher::negamax(int depth, int alpha, int beta, bool updateBestMove) {
 }
 
 int Searcher::qSearch(int depth, int alpha, int beta) {
+    if (wasStopped()) {
+        return 0;
+    }
+
     int bestValue = evaluate::evaluatePosition(board, depth);
     if (bestValue >= beta) {
         return bestValue;
@@ -65,6 +81,11 @@ int Searcher::qSearch(int depth, int alpha, int beta) {
         board.makeMove(move);
         int value = -qSearch(depth - 1, -beta, -alpha);
         board.unmakeMove(move);
+
+        if (wasStopped()) {
+            return 0;
+        }
+
         if (value >= beta) {
             return value;
         }

@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(SDL2 REQUIRED CONFIG)
 find_package(SDL2_image REQUIRED CONFIG)
+find_package(Threads REQUIRED)
 
 add_executable(${PROJECT_NAME} 
   src/main.cpp
@@ -27,4 +28,5 @@ add_executable(generate_magics
 target_link_libraries(${PROJECT_NAME}
   SDL2::SDL2
   SDL2_image::SDL2_image
+  Threads::Threads
 )

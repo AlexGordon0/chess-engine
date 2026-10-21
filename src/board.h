@@ -3,23 +3,24 @@
 
 #include <array>
 #include <cstdint>
-#include <iostream>
 #include <set>
+#include <string>
+#include <string_view>
 #include <vector>
 
 class Move {
-  public:
+public:
     Move(unsigned int start, unsigned int destination, unsigned int flags);
 
-    unsigned int getStart();
-    unsigned int getDestination();
-    unsigned int isCapture();
-    unsigned int isPromotion();
-    unsigned int getFlags();
+    unsigned int getStart() const;
+    unsigned int getDestination() const;
+    unsigned int isCapture() const;
+    unsigned int isPromotion() const;
+    unsigned int getFlags() const;
 
-    auto operator<=>(const Move &other) const = default;
+    auto operator<=>(const Move& other) const = default;
 
-  private:
+private:
     unsigned int move;
 };
 
@@ -31,26 +32,26 @@ struct BoardData {
 };
 
 class Board {
-  public:
-    Board(std::string startingPos);
+public:
+    Board(std::string_view startingPos);
 
     void makeMove(Move move);
     void unmakeMove(Move move);
 
-    std::set<int> getMoveOptions(int startSquare);
-    std::array<short, 64> getState();
-    std::vector<Move> getMoves();
-    uint64_t getBitboard(int index);
-    short getEnPassantSquare();
-    bool getIsWhiteTurn();
-    uint64_t getOpponentAttackMap();
-    short getGameStatus();
+    std::set<int> getMoveOptions(int startSquare) const;
+    std::array<short, 64> getState() const;
+    std::vector<Move> getMoves() const;
+    uint64_t getBitboard(int index) const;
+    short getEnPassantSquare() const;
+    bool getIsWhiteTurn() const;
+    uint64_t getOpponentAttackMap() const;
+    short getGameStatus() const;
 
-    void printBoard();
-    void printBitboard(uint64_t bitboard);
-    void printMoves();
+    void printBoard() const;
+    void printBitboard(uint64_t bitboard) const;
+    void printMoves() const;
 
-  private:
+private:
     std::array<short, 64> state = {0};
 
     /* Bitboard indexes are:
@@ -92,7 +93,7 @@ class Board {
     uint64_t checkEvasionMask;
     uint64_t pinnedPieces;
 
-    void convertFromFen(std::string fenString);
+    void convertFromFen(std::string_view fenString);
     void setup();
     uint64_t zobrist();
     std::vector<BoardData> gameHistory;
@@ -105,7 +106,8 @@ class Board {
     uint64_t generateKingAttackMaps();
 
     void calculatePinnedPieces();
-    void addPinnedPieceMoves(int pieceSquare, uint64_t pinnedMovesMask, bool isDiagonalPin);
+    void addPinnedPieceMoves(int pieceSquare, uint64_t pinnedMovesMask,
+                             bool isDiagonalPin);
     void addPinnedPawnMoves(int pieceSquare, uint64_t pinnedMovesMask);
     bool checkEnPassantPin(int startSquare);
 
