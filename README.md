@@ -42,3 +42,12 @@ Optional parameters include:
 ## Benchmarks
 
 The engine achieved the following perft results from the starting position:
+
+| Depth | Nodes (N) | Time (ms) | Speed (N/s) |
+| :---: | :--- | :--- | :--- |
+| 1 | 20 | 0.006 | 3.3 * 10^6 |
+| 2 | 400 | 0.149 | 2.7 * 10^6 |
+| 3 | 8,902 | 2.417 | 3.7 * 10^6 |
+| 4 | 197,281 | 45.356 | 4.3 * 10^6 |
+| 5 | 4,865,609 | 1,063.81 | 4.6 * 10^6 |
+| 6 | 119,060,324 | 27,317.7 | 4.4 * 10^6 |
