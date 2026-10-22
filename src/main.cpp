@@ -279,9 +279,9 @@ int main(int argc, char* argv[]) {
         } else if (!strcmp(argv[i], "-c")) {
             i++;
             botSettings.enabled = true;
-            if (!strcmp(argv[i], "w")) {
+            if (i < argc && !strcmp(argv[i], "b")) {
                 botSettings.AIControlsWhite = true;
-            } else if (strcmp(argv[i], "b")) {
+            } else if (strcmp(argv[i], "w")) {
                 std::cout << "Invalid usage" << '\n';
                 return 1;
             }
