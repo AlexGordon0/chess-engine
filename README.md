@@ -7,6 +7,7 @@ A chess engine written in C++ with an SDL2 graphical interface.
 - Chess board GUI built using SDL2.
 - Move generation using bitboards, with magic bitboards to optimise sliding-piece move generation.
 - Implements negamax search function with alpha-beta pruning and expanded quiescence search.
+- Static evaluation function using piece-value tables to quantify quality of the position.
 - Includes perft tests to validate move generation by counting the legal move sequences available at a given depth.
 - Displays nodes per second after perft test for benchmarking purposes.
 
@@ -31,7 +32,7 @@ git clone https://github.com/AlexGordon0/chess-engine.git
 
 ### Running
 
-Run the program with `./chess-engine`. 
+Run the program with `./build/chess-engine`. 
 If no parameters are included a chess game from the starting position between two humans players is loaded.
 
 Optional parameters include:
